@@ -35,7 +35,7 @@ type WebViewerWithMemoryWarnings = WebViewer & {
 /** Click-detection threshold: drag distance squared in CSS pixels. */
 const CLICK_THRESHOLD_SQ = 25; // 5 CSS-px radius
 /** `MouseEvent.button` indices we forward to the renderer. */
-const MOUSE_BUTTONS = [0, 1, 2] as const; // left, middle, right
+const MOUSE_BUTTONS = [0, 1, 2, 3, 4] as const; // left, middle, right, back, forward
 const PERF_RING_CAPACITY = 240;
 
 export class ViewerCore {
