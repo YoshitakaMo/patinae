@@ -16,6 +16,23 @@ function modBits(e) {
 
 const CLICK_THRESHOLD_SQ = 25;
 
+/** `MouseEvent.button` indices we forward to the renderer: left, middle, right. */
+const MOUSE_BUTTONS = [0, 1, 2];
+
+/** `MouseEvent.buttons` bit corresponding to a `MouseEvent.button` index. */
+function buttonBit(button) {
+  switch (button) {
+    case 0:
+      return 1; // left
+    case 1:
+      return 4; // middle
+    case 2:
+      return 2; // right
+    default:
+      return 0; // back/forward and friends are not forwarded
+  }
+}
+
 function decodeBase64(b64) {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
@@ -112,20 +129,55 @@ export default {
     // ── Mouse events ───────────────────────────────────────────────
     let clickStart = null;
     let currentDpr = window.devicePixelRatio || 1;
+    // `MouseEvent.buttons` bitmask the WASM side currently believes is pressed.
+    let buttonMask = 0;
 
-    canvas.addEventListener("mousedown", (e) => {
+    // Release any button the renderer still holds but that `e.buttons` says is
+    // no longer pressed. Pointer capture covers the common "released outside
+    // the canvas" case, but capture can be denied or dropped (another element
+    // captured first, OS-level focus loss); without this the renderer keeps the
+    // button latched and the camera stays stuck in a drag.
+    const reconcileButtons = (e) => {
+      for (const button of MOUSE_BUTTONS) {
+        const bit = buttonBit(button);
+        if (!(buttonMask & bit) || e.buttons & bit) continue;
+        buttonMask &= ~bit;
+        wasm.on_mouse_up(e.offsetX, e.offsetY, button);
+        if (button === 0) clickStart = null;
+      }
+    };
+
+    canvas.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       canvas.focus();
+      // Capture the pointer so a drag that leaves the canvas keeps delivering
+      // move/up events here instead of being swallowed by the document.
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        // Capture is best-effort; reconcileButtons() is the fallback.
+      }
+      reconcileButtons(e);
+      buttonMask |= buttonBit(e.button);
       wasm.on_mouse_down(e.offsetX, e.offsetY, e.button, modBits(e));
       if (e.button === 0) clickStart = { x: e.offsetX, y: e.offsetY };
     });
 
-    canvas.addEventListener("mousemove", (e) => {
+    canvas.addEventListener("pointermove", (e) => {
+      reconcileButtons(e);
       wasm.on_mouse_move(e.offsetX, e.offsetY, modBits(e));
       wasm.process_hover(e.offsetX * currentDpr, e.offsetY * currentDpr);
     });
 
-    canvas.addEventListener("mouseup", (e) => {
+    // Re-entering the canvas is the first chance to notice a button that was
+    // released while the cursor was elsewhere.
+    canvas.addEventListener("pointerenter", (e) => reconcileButtons(e));
+
+    canvas.addEventListener("pointerup", (e) => {
+      if (canvas.hasPointerCapture(e.pointerId)) {
+        canvas.releasePointerCapture(e.pointerId);
+      }
+      buttonMask &= ~buttonBit(e.button);
       wasm.on_mouse_up(e.offsetX, e.offsetY, e.button);
       if (e.button === 0 && clickStart) {
         const dx = e.offsetX - clickStart.x;
@@ -135,6 +187,22 @@ export default {
         }
         clickStart = null;
       }
+    });
+
+    // The browser took the pointer away (touch gesture, OS-level drag, ...):
+    // no pointerup is coming, so release everything we still hold.
+    canvas.addEventListener("pointercancel", (e) => {
+      if (canvas.hasPointerCapture(e.pointerId)) {
+        canvas.releasePointerCapture(e.pointerId);
+      }
+      for (const button of MOUSE_BUTTONS) {
+        if (buttonMask & buttonBit(button)) {
+          wasm.on_mouse_up(e.offsetX, e.offsetY, button);
+        }
+      }
+      buttonMask = 0;
+      clickStart = null;
+      wasm.process_hover(-1, -1);
     });
 
     canvas.addEventListener("mouseleave", () => {
