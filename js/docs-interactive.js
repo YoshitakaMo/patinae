@@ -102,7 +102,10 @@ export function initDocPages(viewer) {
 
     const seq = ++setupSeq;
     viewer.core.setDeferred(true);
-    viewer.execute("delete all");
+    // PRS files can carry global settings such as cartoon_color. Start each
+    // documentation page with a fresh session so those settings cannot leak
+    // into structures loaded by the following page.
+    viewer.execute("reinitialize");
 
     if (src) {
       for (const url of src.split(/\s+/).filter(Boolean))
