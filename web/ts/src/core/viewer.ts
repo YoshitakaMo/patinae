@@ -34,6 +34,8 @@ type WebViewerWithMemoryWarnings = WebViewer & {
 
 /** Click-detection threshold: drag distance squared in CSS pixels. */
 const CLICK_THRESHOLD_SQ = 25; // 5 CSS-px radius
+/** `MouseEvent.button` indices we forward to the renderer. */
+const MOUSE_BUTTONS = [0, 1, 2] as const; // left, middle, right
 const PERF_RING_CAPACITY = 240;
 
 export class ViewerCore {
@@ -45,6 +47,8 @@ export class ViewerCore {
   private _deferred = false;
   private _revealDuration = 150;
   private dpr = 1;
+  /** `MouseEvent.buttons` bitmask the WASM side currently believes is pressed. */
+  private buttonMask = 0;
   private clickStart: { x: number; y: number } | null = null;
   private fatalError: unknown | null = null;
   private fatalLabel: string | null = null;
@@ -365,13 +369,44 @@ export class ViewerCore {
   // Event binding
   // ---------------------------------------------------------------------------
 
+  /**
+   * Release any button the renderer still believes is pressed but that the
+   * event's `buttons` bitmask says is not.
+   *
+   * Pointer capture covers the common "released outside the canvas" case, but
+   * capture can be denied or silently dropped (another element captured first,
+   * OS-level focus loss, a native drag starting). Without this reconciliation
+   * the renderer keeps the button latched and the camera stays stuck in a drag
+   * on the next mouse move.
+   */
+  private reconcileButtons(e: PointerEvent): void {
+    for (const button of MOUSE_BUTTONS) {
+      const bit = buttonBit(button);
+      if (!(this.buttonMask & bit) || e.buttons & bit) continue;
+      this.buttonMask &= ~bit;
+      this.callWasm("on_mouse_up", (wasm) =>
+        wasm.on_mouse_up(e.offsetX, e.offsetY, button),
+      );
+      if (button === 0) this.clickStart = null;
+    }
+  }
+
   private bindEvents(): void {
     const c = this.canvas;
     this.dpr = window.devicePixelRatio || 1;
 
-    c.addEventListener("mousedown", (e) => {
+    c.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       c.focus();
+      // Capture the pointer so a drag that leaves the canvas keeps delivering
+      // move/up events here instead of being swallowed by the document.
+      try {
+        c.setPointerCapture(e.pointerId);
+      } catch {
+        // Capture is best-effort; reconcileButtons() is the fallback.
+      }
+      this.reconcileButtons(e);
+      this.buttonMask |= buttonBit(e.button);
       this.callWasm("on_mouse_down", (wasm) =>
         wasm.on_mouse_down(e.offsetX, e.offsetY, e.button, modBits(e)),
       );
@@ -382,7 +417,8 @@ export class ViewerCore {
       }
     });
 
-    c.addEventListener("mousemove", (e) => {
+    c.addEventListener("pointermove", (e) => {
+      this.reconcileButtons(e);
       this.callWasm("on_mouse_move", (wasm) =>
         wasm.on_mouse_move(e.offsetX, e.offsetY, modBits(e)),
       );
@@ -393,7 +429,15 @@ export class ViewerCore {
       };
     });
 
-    c.addEventListener("mouseup", (e) => {
+    // Re-entering the canvas is the first chance to notice a button that was
+    // released while the cursor was elsewhere.
+    c.addEventListener("pointerenter", (e) => this.reconcileButtons(e));
+
+    c.addEventListener("pointerup", (e) => {
+      if (c.hasPointerCapture(e.pointerId)) {
+        c.releasePointerCapture(e.pointerId);
+      }
+      this.buttonMask &= ~buttonBit(e.button);
       this.callWasm("on_mouse_up", (wasm) =>
         wasm.on_mouse_up(e.offsetX, e.offsetY, e.button),
       );
@@ -410,6 +454,23 @@ export class ViewerCore {
         }
         this.clickStart = null;
       }
+    });
+
+    // The browser took the pointer away (touch gesture, OS-level drag, ...):
+    // no pointerup is coming, so release everything we still hold.
+    c.addEventListener("pointercancel", (e) => {
+      if (c.hasPointerCapture(e.pointerId)) {
+        c.releasePointerCapture(e.pointerId);
+      }
+      for (const button of MOUSE_BUTTONS) {
+        if (!(this.buttonMask & buttonBit(button))) continue;
+        this.callWasm("on_mouse_up", (wasm) =>
+          wasm.on_mouse_up(e.offsetX, e.offsetY, button),
+        );
+      }
+      this.buttonMask = 0;
+      this.clickStart = null;
+      this.queuedHover = { x: -1, y: -1 };
     });
 
     c.addEventListener("mouseleave", () => {
@@ -446,6 +507,20 @@ export class ViewerCore {
     const rect = this.canvas.getBoundingClientRect();
     this.canvas.width = Math.round(rect.width * dpr);
     this.canvas.height = Math.round(rect.height * dpr);
+  }
+}
+
+/** `MouseEvent.buttons` bit corresponding to a `MouseEvent.button` index. */
+function buttonBit(button: number): number {
+  switch (button) {
+    case 0:
+      return 1; // left
+    case 1:
+      return 4; // middle
+    case 2:
+      return 2; // right
+    default:
+      return 0; // back/forward and friends are not forwarded
   }
 }
 
