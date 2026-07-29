@@ -5,9 +5,14 @@ function flashElement(el, className = "flash", ms = 400) {
   setTimeout(() => el.classList.remove(className), ms);
 }
 
-function execCmdString(viewer, cmdStr) {
+async function execCmdString(viewer, cmdStr) {
   for (const cmd of cmdStr.split(";").map(s => s.trim()).filter(Boolean))
-    viewer.execute(cmd);
+    await viewer.executeAsync(cmd);
+}
+
+async function loadSources(viewer, src) {
+  for (const url of src.split(/\s+/).filter(Boolean))
+    await viewer.loadUrl(url);
 }
 
 // ── SPA page navigation ─────────────────────────────────────────────────────
@@ -20,17 +25,28 @@ function execCmdString(viewer, cmdStr) {
  *   data-command="cmd1; cmd2"   — semicolon-separated PyMOL commands
  *
  * Inline commands use `data-cmd` (semicolon-separated) with optional
- * `data-cmd-alt` for toggle behaviour.
+ * `data-src` for structure file(s) and `data-cmd-alt` for toggle behaviour.
  */
 export function initDocPages(viewer) {
+  let setupSeq = 0;
+  let viewerQueue = Promise.resolve();
+
+  function enqueueViewerOperation(operation) {
+    const queued = viewerQueue.then(operation);
+    viewerQueue = queued.catch(() => {});
+    return queued;
+  }
+
   // ── Inline command clicks ─────────────────────────────────────────────
-  document.addEventListener("click", (e) => {
+  document.addEventListener("click", async (e) => {
     const el = e.target.closest("[data-cmd]");
     if (!el) return;
     e.preventDefault();
+    const src = el.dataset.src;
     const alt = el.dataset.cmdAlt;
     const toggled = el.classList.contains("toggled");
     const cmdStr = (alt && toggled) ? alt : el.dataset.cmd;
+    const seq = setupSeq;
     if (alt) el.classList.toggle("toggled");
 
     // Radio-group: un-toggle siblings in the same group
@@ -41,8 +57,20 @@ export function initDocPages(viewer) {
       });
     }
 
-    execCmdString(viewer, cmdStr);
-    flashElement(el);
+    try {
+      await enqueueViewerOperation(async () => {
+        if (seq !== setupSeq) return;
+        if (src) {
+          viewer.execute("delete all");
+          await loadSources(viewer, src);
+          if (seq !== setupSeq) return;
+        }
+        await execCmdString(viewer, cmdStr);
+        if (seq === setupSeq) flashElement(el);
+      });
+    } catch (error) {
+      console.error("Interactive viewer command failed:", error);
+    }
   });
 
   // ── Page management ───────────────────────────────────────────────────
@@ -51,7 +79,6 @@ export function initDocPages(viewer) {
 
   const sidebar = document.querySelector(".docs-sidebar");
   let currentIdx = 0;
-  let setupSeq = 0;
 
   function showPage(idx, pushState = true) {
     if (idx < 0 || idx >= pages.length) return;
@@ -73,7 +100,9 @@ export function initDocPages(viewer) {
     if (pushState) history.pushState(null, "", "#" + page.id);
 
     // Viewer setup for this section
-    setupViewer(page);
+    setupViewer(page).catch(error => {
+      console.error("Viewer setup failed:", error);
+    });
 
     // Prev / Next buttons
     page.querySelectorAll("[data-nav]").forEach(btn => {
@@ -95,27 +124,28 @@ export function initDocPages(viewer) {
     window.scrollTo({ top: 0 });
   }
 
-  async function setupViewer(page) {
+  function setupViewer(page) {
     const src = page.dataset.src;
     const command = page.dataset.command;
-    if (!src && !command) return;
-
     const seq = ++setupSeq;
-    viewer.core.setDeferred(true);
-    // PRS files can carry global settings such as cartoon_color. Start each
-    // documentation page with a fresh session so those settings cannot leak
-    // into structures loaded by the following page.
-    viewer.execute("reinitialize");
+    if (!src && !command) return Promise.resolve();
 
-    if (src) {
-      for (const url of src.split(/\s+/).filter(Boolean))
-        await viewer.loadUrl(url);
-    }
+    return enqueueViewerOperation(async () => {
+      if (seq !== setupSeq) return;
 
-    if (seq !== setupSeq) return;
-    if (command) execCmdString(viewer, command);
+      viewer.core.setDeferred(true);
+      // PRS files can carry global settings such as cartoon_color. Start each
+      // documentation page with a fresh session so those settings cannot leak
+      // into structures loaded by the following page.
+      viewer.execute("reinitialize");
 
-    await viewer.show();
+      if (src) await loadSources(viewer, src);
+
+      if (seq !== setupSeq) return;
+      if (command) await execCmdString(viewer, command);
+
+      await viewer.show();
+    });
   }
 
   // ── Navigation wiring ─────────────────────────────────────────────────

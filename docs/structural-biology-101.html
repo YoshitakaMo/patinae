@@ -557,7 +557,8 @@
                             nucleic acids. DNA
                             <span
                                 class="cmd-run"
-                                data-cmd="delete all; load dna-nucleotides.pdb; as sticks; color cpk; orient; zoom all, buffer=5"
+                                data-src="../assets/pdb/dna-nucleotides.pdb"
+                                data-cmd="as sticks; color cpk; orient; zoom all, buffer=5"
                                 >uses four</span
                             >: adenine (A), guanine (G), cytosine (C) and
                             thymine (T) — you can see all four in the viewer.
@@ -613,7 +614,8 @@
                             but consequential. Compare
                             <span
                                 class="cmd-run"
-                                data-cmd="delete all; load da-vs-ra.pdb; as sticks; color cpk; orient; zoom all, buffer=8"
+                                data-src="../assets/pdb/da-vs-ra.pdb"
+                                data-cmd="as sticks; color cpk; orient; zoom all, buffer=8"
                                 >deoxyadenosine (left) with adenosine
                                 (right)</span
                             >: RNA's ribose has an
@@ -632,7 +634,8 @@
                             The other difference is one base:
                             <span
                                 class="cmd-run"
-                                data-cmd="delete all; load dt-vs-u.pdb; as sticks; color cpk; orient; zoom all, buffer=8"
+                                data-src="../assets/pdb/dt-vs-u.pdb"
+                                data-cmd="as sticks; color cpk; orient; zoom all, buffer=8"
                                 >thymine (left) vs uracil (right)</span
                             >. Thymine carries an extra
                             <span
@@ -684,7 +687,8 @@
                             In the viewer you see a
                             <span
                                 class="cmd-run"
-                                data-cmd="delete all; load 1BNA.pdb; as sticks; color cpk; orient; turn z, 80; turn y, 30; zoom all, buffer=5"
+                                data-src="../assets/pdb/1BNA.pdb"
+                                data-cmd="as sticks; color cpk; orient; turn z, 80; turn y, 30; zoom all, buffer=5"
                                 >fragment of DNA</span
                             >
                             — 12 base pairs of the classic double helix, one of
@@ -729,7 +733,8 @@
                             with itself. A classic example is
                             <span
                                 class="cmd-run"
-                                data-cmd="delete all; load 1EHZ.pdb; as cartoon; color chain; orient; turn x, 90; zoom all, buffer=5"
+                                data-src="../assets/pdb/1EHZ.pdb"
+                                data-cmd="as cartoon; color chain; orient; turn x, 90; zoom all, buffer=5"
                                 >transfer RNA</span
                             >
                             (tRNA) — the adaptor molecule that carries amino
@@ -1388,6 +1393,8 @@
             const viewer = new PatinaeViewer(
                 document.getElementById("viewer-container"),
                 {
+                    picking: false,
+                    selectionOverlay: true,
                     layout: [{ name: "repl", slot: "repl" }],
                     slots: {
                         repl: document.getElementById("viewer-repl"),
