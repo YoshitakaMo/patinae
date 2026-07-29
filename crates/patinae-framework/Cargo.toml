@@ -28,6 +28,7 @@ dirs = { workspace = true }
 
 [dev-dependencies]
 patinae-algos = { workspace = true }
+tempfile = "3"
 
 [lints]
 workspace = true

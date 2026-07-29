@@ -500,7 +500,7 @@ fn build_nucleic_geometry(
 mod tests {
     use super::*;
     use crate::geometry_export::analytic::oct_decode;
-    use crate::representations::cartoon::backbone::{extract_retained_backbone, BackboneAtom};
+    use crate::representations::cartoon::backbone::BackboneAtom;
     use lin_alg::f32::Vec3;
     use patinae_mol::{
         AtomBuilder, AtomFlags, AtomIndex, AtomResidue, MoleculeBuilder, ObjectMolecule, RepMask,
@@ -512,39 +512,62 @@ mod tests {
         (a - b).magnitude() < 1.0e-4
     }
 
-    fn one_nucleotide() -> (ObjectMolecule, BackboneAtom, AtomIndex) {
-        let residue = Arc::new(AtomResidue::from_parts("A", "DA", 1, ' ', ""));
+    fn synthetic_nucleotides(count: usize) -> (ObjectMolecule, Vec<BackboneAtom>) {
+        const NUCLEOTIDE_SPACING: f32 = 6.0;
+
         let mut builder = MoleculeBuilder::new("nt");
-        for (name, element, position) in [
-            ("P", "P", Vec3::new(0.0, 0.0, 0.0)),
-            ("C1'", "C", Vec3::new(1.5, 0.0, 0.0)),
-            ("N9", "N", Vec3::new(2.2, 0.0, 0.0)),
-            ("C8", "C", Vec3::new(3.0, -0.9, 0.0)),
-            ("N7", "N", Vec3::new(4.0, -0.5, 0.0)),
-            ("C5", "C", Vec3::new(4.0, 0.6, 0.0)),
-            ("C6", "C", Vec3::new(3.0, 1.0, 0.0)),
-        ] {
-            let mut atom = AtomBuilder::new()
-                .name(name)
-                .element_symbol(element)
-                .build();
-            atom.residue = residue.clone();
-            atom.state.flags |= AtomFlags::NUCLEIC | AtomFlags::POLYMER;
-            builder = builder.add_atom(atom, position);
+        for residue_index in 0..count {
+            let residue_number =
+                i32::try_from(residue_index).expect("synthetic residue index fits i32") + 1;
+            let residue = Arc::new(AtomResidue::from_parts("A", "DA", residue_number, ' ', ""));
+            let offset = Vec3::new(0.0, residue_index as f32 * NUCLEOTIDE_SPACING, 0.0);
+            for (name, element, position) in [
+                ("P", "P", Vec3::new(0.0, 0.0, 0.0)),
+                ("C1'", "C", Vec3::new(1.5, 0.0, 0.0)),
+                ("N9", "N", Vec3::new(2.2, 0.0, 0.0)),
+                ("C8", "C", Vec3::new(3.0, -0.9, 0.0)),
+                ("N7", "N", Vec3::new(4.0, -0.5, 0.0)),
+                ("C5", "C", Vec3::new(4.0, 0.6, 0.0)),
+                ("C6", "C", Vec3::new(3.0, 1.0, 0.0)),
+            ] {
+                let mut atom = AtomBuilder::new()
+                    .name(name)
+                    .element_symbol(element)
+                    .build();
+                atom.residue = residue.clone();
+                atom.state.flags |= AtomFlags::NUCLEIC | AtomFlags::POLYMER;
+                builder = builder.add_atom(atom, position + offset);
+            }
         }
         let molecule = builder.build();
+        let coord_set = molecule.current_coord_set().expect("coordinate set");
+        let backbone = molecule
+            .atoms_indexed()
+            .filter(|(_, atom)| &*atom.name == "P")
+            .map(|(index, _)| {
+                let position = coord_set.get_atom_coord(index).expect("P coordinate");
+                BackboneAtom {
+                    position: [position.x, position.y, position.z],
+                    atom_id: index.as_u32(),
+                    orientation: [1.0, 0.0, 0.0],
+                    flags: SecondaryStructure::NucleicRibbon as u32,
+                }
+            })
+            .collect();
+
+        (molecule, backbone)
+    }
+
+    fn one_nucleotide() -> (ObjectMolecule, BackboneAtom, AtomIndex) {
+        let (molecule, mut backbone) = synthetic_nucleotides(1);
         let guide_id = molecule.atoms_indexed().next().expect("P atom").0;
         let base_id = molecule
             .atoms_indexed()
             .find(|(_, atom)| &*atom.name == "C8")
             .expect("C8 atom")
             .0;
-        let backbone = BackboneAtom {
-            position: [0.0, 0.0, 0.0],
-            atom_id: guide_id.as_u32(),
-            orientation: [1.0, 0.0, 0.0],
-            flags: SecondaryStructure::NucleicRibbon as u32,
-        };
+        let backbone = backbone.pop().expect("synthetic backbone atom");
+        assert_eq!(backbone.atom_id, guide_id.as_u32());
         (molecule, backbone, base_id)
     }
 
@@ -683,18 +706,15 @@ mod tests {
     }
 
     #[test]
-    fn six_yov_emits_one_integrated_accent_per_retained_nucleotide() {
-        let molecule = patinae_io::cif::read_cif(std::path::Path::new(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../_tests/6yov.cif"
-        )))
-        .expect("parse 6YOV");
+    fn synthetic_nucleotides_emit_one_integrated_accent_each() {
+        const NUCLEOTIDE_COUNT: usize = 3;
+
+        let (molecule, backbone) = synthetic_nucleotides(NUCLEOTIDE_COUNT);
         let coord_set = molecule.current_coord_set().expect("coord set");
-        let backbone = extract_retained_backbone(&molecule, coord_set, 10);
         let nucleotide_count = count_nucleic_residues(&backbone);
         let geometry = build_nucleic_geometry(&molecule, coord_set, &backbone, true);
 
-        assert!(nucleotide_count > 0);
+        assert_eq!(nucleotide_count, NUCLEOTIDE_COUNT);
         assert_eq!(
             geometry.vertices.len(),
             nucleotide_count * MAX_VERTICES_PER_NUCLEOTIDE as usize

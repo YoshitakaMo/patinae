@@ -489,24 +489,6 @@ fn viewport_image_len(width: u32, height: u32) -> Option<usize> {
 mod tests {
     use super::*;
 
-    fn project_root() -> std::path::PathBuf {
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-    }
-
-    fn test_structure_path(relative: &str) -> Option<std::path::PathBuf> {
-        let Some(root) = std::env::var_os("TEST_STRUCTURES_DIR") else {
-            eprintln!("skipping fixture test: TEST_STRUCTURES_DIR is not set");
-            return None;
-        };
-        let root = std::path::PathBuf::from(root);
-        let root = if root.is_absolute() {
-            root
-        } else {
-            project_root().join(root)
-        };
-        Some(root.join(relative))
-    }
-
     #[test]
     fn kernel_creates_with_defaults() {
         let kernel = AppKernel::new();
@@ -759,10 +741,17 @@ mod tests {
     #[test]
     fn successful_load_emits_recent_file_action() {
         let mut kernel = AppKernel::new();
-        let Some(path) = test_structure_path("1fsd.pdb") else {
-            return;
-        };
-        let path = std::fs::canonicalize(path).expect("load fixture should have an absolute path");
+        let fixture = tempfile::Builder::new()
+            .suffix(".pdb")
+            .tempfile()
+            .expect("temporary PDB fixture should be created");
+        std::fs::write(
+            fixture.path(),
+            b"ATOM      1  CA  ALA A   1       0.000   0.000   0.000  1.00 20.00           C  \nEND\n",
+        )
+        .expect("temporary PDB fixture should be written");
+        let path = std::fs::canonicalize(fixture.path())
+            .expect("load fixture should have an absolute path");
         let command = format!("load {}", path.display());
 
         kernel

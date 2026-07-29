@@ -966,25 +966,40 @@ mod tests {
         molecule_with_residue("LIG", &atom_names)
     }
 
-    fn test_structure_path(relative: &str) -> Option<PathBuf> {
-        let repo_fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("_tests")
-            .join(relative);
-        if repo_fixture.exists() {
-            return Some(repo_fixture);
+    fn alanine_tripeptide_without_hydrogens() -> ObjectMolecule {
+        let mut molecule = ObjectMolecule::new("ala3");
+        let mut coords = Vec::new();
+
+        for residue_number in 1..=3 {
+            let residue = Arc::new(AtomResidue::new(
+                ResidueKey::new("A", "ALA", residue_number, ' '),
+                String::new(),
+            ));
+            let mut atoms = vec![
+                ("N", Element::Nitrogen),
+                ("CA", Element::Carbon),
+                ("CB", Element::Carbon),
+                ("C", Element::Carbon),
+                ("O", Element::Oxygen),
+            ];
+            if residue_number == 3 {
+                atoms.push(("OXT", Element::Oxygen));
+            }
+
+            for (atom_offset, (name, element)) in atoms.into_iter().enumerate() {
+                let mut atom = Atom::new(name, element);
+                atom.residue = residue.clone();
+                molecule.add_atom(atom);
+                coords.push(Vec3::new(
+                    (residue_number - 1) as f32 * 4.0 + atom_offset as f32 * 0.7,
+                    atom_offset as f32 * 0.3,
+                    0.0,
+                ));
+            }
         }
-        let Some(root) = std::env::var_os("TEST_STRUCTURES_DIR") else {
-            eprintln!("skipping fixture test: TEST_STRUCTURES_DIR is not set");
-            return None;
-        };
-        let path = PathBuf::from(root).join(relative);
-        if path.exists() {
-            Some(path)
-        } else {
-            eprintln!("skipping fixture test: {} does not exist", path.display());
-            None
-        }
+
+        molecule.add_coord_set(CoordSet::from_vec3(&coords));
+        molecule
     }
 
     #[test]
@@ -1165,16 +1180,13 @@ mod tests {
     }
 
     #[test]
-    fn fixture_1fdl_parameterizes_with_bundled_amber() {
-        let Some(path) = test_structure_path("1fdl.cif") else {
-            return;
-        };
-        let mol = patinae_io::cif::read_cif(&path).unwrap();
+    fn synthetic_peptide_parameterizes_with_bundled_amber() {
+        let mol = alanine_tripeptide_without_hydrogens();
         let ff_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("forcefields/amber19sb.ff");
         let force_field = crate::gromacs::load_force_field(ff_path).unwrap();
         let input_atom_count = mol.atom_count();
         let selected = SelectedMolecule {
-            object: "1fdl".into(),
+            object: "ala3".into(),
             selection: SelectionResult::all(mol.atom_count()),
             molecule: mol,
         };

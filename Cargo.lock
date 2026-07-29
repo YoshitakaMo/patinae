@@ -4156,6 +4156,7 @@ dependencies = [
  "rmp-serde",
  "serde",
  "shellexpand",
+ "tempfile",
 ]
 
 [[package]]
@@ -4184,6 +4185,7 @@ dependencies = [
  "patinae-settings",
  "rmp-serde",
  "serde",
+ "tempfile",
  "tokio",
  "wgpu",
 ]
@@ -4213,7 +4215,6 @@ version = "0.4.5"
 dependencies = [
  "lin_alg",
  "log",
- "patinae-io",
  "patinae-mol",
  "patinae-select",
  "tempfile",

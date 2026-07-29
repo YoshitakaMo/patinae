@@ -233,7 +233,6 @@ impl Command for IsosurfaceCommand {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
     use std::sync::Arc;
 
     use patinae_algos::surface::{extract_isomesh, extract_isosurface, Grid3D};
@@ -260,22 +259,46 @@ mod tests {
         f(&mut adapter)
     }
 
-    fn project_root() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+    fn write_i32(header: &mut [u8], offset: usize, value: i32) {
+        header[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
     }
 
-    fn test_structure_path(relative: &str) -> Option<PathBuf> {
-        let Some(root) = std::env::var_os("TEST_STRUCTURES_DIR") else {
-            eprintln!("skipping fixture test: TEST_STRUCTURES_DIR is not set");
-            return None;
-        };
-        let root = PathBuf::from(root);
-        let root = if root.is_absolute() {
-            root
-        } else {
-            project_root().join(root)
-        };
-        Some(root.join(relative))
+    fn write_f32(header: &mut [u8], offset: usize, value: f32) {
+        header[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn minimal_ccp4_fixture() -> Vec<u8> {
+        const GRID_POINTS: i32 = 3;
+
+        let mut header = vec![0_u8; 1024];
+        for offset in [0, 4, 8, 28, 32, 36] {
+            write_i32(&mut header, offset, GRID_POINTS);
+        }
+        write_i32(&mut header, 12, 2);
+        for (offset, length) in [(40, 3.0), (44, 3.0), (48, 3.0)] {
+            write_f32(&mut header, offset, length);
+        }
+        for offset in [52, 56, 60] {
+            write_f32(&mut header, offset, 90.0);
+        }
+        for (offset, axis) in [(64, 1), (68, 2), (72, 3)] {
+            write_i32(&mut header, offset, axis);
+        }
+        write_f32(&mut header, 76, 0.0);
+        write_f32(&mut header, 80, 2.0);
+        write_f32(&mut header, 84, 2.0 / 27.0);
+        write_i32(&mut header, 88, 1);
+        header[208..212].copy_from_slice(b"MAP ");
+        header[212] = 0x44;
+        header[213] = 0x41;
+        write_f32(&mut header, 216, 0.38);
+
+        let mut fixture = header;
+        for index in 0..27 {
+            let value = if index == 13 { 2.0_f32 } else { 0.0_f32 };
+            fixture.extend_from_slice(&value.to_le_bytes());
+        }
+        fixture
     }
 
     #[test]
@@ -349,24 +372,26 @@ mod tests {
     #[test]
     fn smoke_load_ccp4_and_create_isomesh_and_isosurface() {
         let mut session = Session::new();
-        let Some(fixture) = test_structure_path("iso/1bna.ccp4") else {
-            return;
-        };
-        assert!(fixture.exists(), "missing fixture: {}", fixture.display());
-        let load_cmd = format!("load {}, 1bna", fixture.display());
+        let fixture = tempfile::Builder::new()
+            .suffix(".ccp4")
+            .tempfile()
+            .expect("temporary CCP4 fixture should be created");
+        std::fs::write(fixture.path(), minimal_ccp4_fixture())
+            .expect("temporary CCP4 fixture should be written");
+        let load_cmd = format!("load {}, density", fixture.path().display());
 
         with_adapter(&mut session, |adapter| {
             let mut executor = CommandExecutor::new();
             executor.do_with_options(adapter, &load_cmd, true).unwrap();
             executor
-                .do_with_options(adapter, "isomesh mesh1, 1bna, 1.0", true)
+                .do_with_options(adapter, "isomesh mesh1, density, 1.0", true)
                 .unwrap();
             executor
-                .do_with_options(adapter, "isosurface surf1, 1bna, 1.0", true)
+                .do_with_options(adapter, "isosurface surf1, density, 1.0", true)
                 .unwrap();
         });
 
-        let source = session.registry.get_map("1bna").unwrap();
+        let source = session.registry.get_map("density").unwrap();
         assert_eq!(source.display_mode(), MapDisplayMode::None);
         assert!(!source.is_renderable());
 

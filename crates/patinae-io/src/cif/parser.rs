@@ -715,28 +715,8 @@ fn parse_ss_single(
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
     use patinae_mol::SecondaryStructure;
-
-    fn project_root() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-    }
-
-    fn test_structure_path(relative: &str) -> Option<PathBuf> {
-        let Some(root) = std::env::var_os("TEST_STRUCTURES_DIR") else {
-            eprintln!("skipping fixture test: TEST_STRUCTURES_DIR is not set");
-            return None;
-        };
-        let root = PathBuf::from(root);
-        let root = if root.is_absolute() {
-            root
-        } else {
-            project_root().join(root)
-        };
-        Some(root.join(relative))
-    }
 
     #[test]
     fn test_read_simple_cif() {
@@ -768,17 +748,32 @@ _atom_site.B_iso_or_equiv
     }
 
     #[test]
-    fn test_1fsd_cif_loads_all_model_states() {
-        let Some(path) = test_structure_path("1fsd.cif") else {
-            return;
-        };
-        let cif_data = std::fs::read_to_string(&path)
-            .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+    fn test_cif_loads_all_model_states() {
+        let cif_data = r#"data_MODELS
+_entry.id MODELS
+loop_
+_atom_site.id
+_atom_site.type_symbol
+_atom_site.label_atom_id
+_atom_site.label_comp_id
+_atom_site.label_asym_id
+_atom_site.label_seq_id
+_atom_site.Cartn_x
+_atom_site.Cartn_y
+_atom_site.Cartn_z
+_atom_site.occupancy
+_atom_site.B_iso_or_equiv
+_atom_site.pdbx_PDB_model_num
+1 C CA ALA A 1 0.000 0.000 0.000 1.00 20.00 1
+2 O O  ALA A 1 1.000 0.000 0.000 1.00 20.00 1
+3 C CA ALA A 1 0.500 0.000 0.000 1.00 20.00 2
+4 O O  ALA A 1 1.500 0.000 0.000 1.00 20.00 2
+"#;
         let mut reader = CifReader::new(cif_data.as_bytes());
         let mol = reader.read().unwrap();
 
-        assert_eq!(mol.atom_count(), 504);
-        assert_eq!(mol.state_count(), 41);
+        assert_eq!(mol.atom_count(), 2);
+        assert_eq!(mol.state_count(), 2);
 
         let state_1 = mol
             .get_coord_set(0)
