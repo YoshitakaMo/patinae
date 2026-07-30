@@ -1110,20 +1110,39 @@ impl App {
         let hit = self.renderer.as_mut().and_then(|r| {
             r.pick_at_click(&self.kernel.session, click_pos.0 as u32, click_pos.1 as u32)
         });
+        let (_shift, ctrl, _alt, _logo) = self.winit_modifiers.get();
+        let hit_pickable_atom = hit.as_ref().is_some_and(|hit| {
+            hit.atom_index.is_some()
+                && self
+                    .kernel
+                    .session
+                    .registry
+                    .get_molecule(&hit.object_name)
+                    .is_some()
+        });
+        if ctrl && !hit_pickable_atom {
+            self.kernel.session.selections.clear_picks();
+        }
 
         let cmd = if let Some(ref hit) = hit {
             if let Some(mol_obj) = self.kernel.session.registry.get_molecule(&hit.object_name) {
                 let mol = mol_obj.molecule();
                 let mode = self.kernel.session.settings.ui.mouse_selection_mode as i32;
 
-                pick_expression_for_hit(hit, mode, mol).and_then(|expr| {
+                // Ordered measurement picks are always individual atoms,
+                // independent of the normal mouse selection expansion mode.
+                let expression_mode = if ctrl { 0 } else { mode };
+                pick_expression_for_hit(hit, expression_mode, mol).and_then(|expr| {
+                    if ctrl {
+                        self.kernel.session.selections.push_pick(&expr);
+                    }
                     let overlaps_sele =
                         self.kernel
                             .session
                             .selections
                             .get("sele")
                             .is_some_and(|entry| {
-                                let sel = expand_pick_to_selection(hit, mode, mol);
+                                let sel = expand_pick_to_selection(hit, expression_mode, mol);
                                 patinae_select::select(mol, &entry.expression)
                                     .map(|sele| sel.intersection(&sele).any())
                                     .unwrap_or(false)

@@ -98,6 +98,48 @@ impl SelectionManager {
         self.generation += 1;
     }
 
+    /// Append an atom expression to PyMOL-compatible ordered pick slots.
+    pub fn push_pick(&mut self, expression: &str) {
+        if let Some(existing) = (1..=4).find(|index| {
+            self.get_expression(&format!("pk{index}"))
+                .is_some_and(|current| current == expression)
+        }) {
+            self.remove_pick_slot(existing);
+            return;
+        }
+
+        let slot = (1..=4)
+            .find(|index| !self.contains(&format!("pk{index}")))
+            .unwrap_or(4);
+        if slot == 4 && self.contains("pk4") {
+            for index in 1..4 {
+                if let Some(next) = self.get_expression(&format!("pk{}", index + 1)) {
+                    let next = next.to_string();
+                    self.define(&format!("pk{index}"), &next);
+                }
+            }
+        }
+        self.define(&format!("pk{slot}"), expression);
+    }
+
+    fn remove_pick_slot(&mut self, slot: usize) {
+        for index in slot..4 {
+            let next_name = format!("pk{}", index + 1);
+            if let Some(next) = self.get_expression(&next_name).map(str::to_owned) {
+                self.define(&format!("pk{index}"), &next);
+            } else {
+                self.remove(&format!("pk{index}"));
+            }
+        }
+        self.remove("pk4");
+    }
+
+    pub fn clear_picks(&mut self) {
+        for index in 1..=4 {
+            self.remove(&format!("pk{index}"));
+        }
+    }
+
     /// Define a named selection with pre-computed evaluation results.
     ///
     /// The `results` contain per-object SelectionResult bitvecs evaluated at
@@ -456,6 +498,47 @@ mod tests {
 
         manager.set_visible("sel1", true);
         assert!(manager.is_visible("sel1"));
+    }
+
+    #[test]
+    fn repeated_pick_toggles_the_same_atom_off() {
+        let mut manager = SelectionManager::new();
+        manager.push_pick("model 1crn and index 0");
+        assert_eq!(
+            manager.get_expression("pk1"),
+            Some("model 1crn and index 0")
+        );
+
+        manager.push_pick("model 1crn and index 0");
+        assert!(!manager.contains("pk1"));
+    }
+
+    #[test]
+    fn removing_a_pick_compacts_later_slots() {
+        let mut manager = SelectionManager::new();
+        manager.push_pick("index 1");
+        manager.push_pick("index 2");
+        manager.push_pick("index 3");
+
+        manager.push_pick("index 2");
+
+        assert_eq!(manager.get_expression("pk1"), Some("index 1"));
+        assert_eq!(manager.get_expression("pk2"), Some("index 3"));
+        assert!(!manager.contains("pk3"));
+    }
+
+    #[test]
+    fn clear_picks_removes_all_ordered_pick_slots() {
+        let mut manager = SelectionManager::new();
+        for index in 1..=4 {
+            manager.push_pick(&format!("index {index}"));
+        }
+
+        manager.clear_picks();
+
+        for index in 1..=4 {
+            assert!(!manager.contains(&format!("pk{index}")));
+        }
     }
 
     #[test]
