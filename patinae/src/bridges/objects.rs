@@ -227,6 +227,7 @@ impl ObjectsBridge {
             object_type: match obj.kind {
                 SceneObjectKind::Molecule => "molecule".into(),
                 SceneObjectKind::Map => "map".into(),
+                SceneObjectKind::Measurement => "measurement".into(),
             },
             object_icon_kind: object_icon_kind(obj).into(),
             enabled: obj.enabled,
@@ -1662,7 +1663,13 @@ pub fn setup_callbacks(app: Rc<RefCell<crate::app::App>>, window: &AppWindow) {
                 "copy" => open_name_popup(&os, "copy", &target, &short),
                 "extract" => open_name_popup(&os, "extract", &target, &short),
                 "remove" => {
-                    let cmd = format!("remove {}", target);
+                    let is_measurement =
+                        a.kernel.session.registry.get_measurement(&target).is_some();
+                    let cmd = if is_measurement {
+                        format!("delete {}", target)
+                    } else {
+                        format!("remove {}", target)
+                    };
                     a.kernel.bus.execute_command(&cmd);
                     os.set_popover_kind("".into());
                 }

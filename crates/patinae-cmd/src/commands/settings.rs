@@ -714,7 +714,7 @@ mod tests {
     use crate::CommandExecutor;
     use patinae_mol::{AtomBuilder, ObjectMolecule, COLOR_UNSET};
     use patinae_scene::{Session, SessionAdapter};
-    use patinae_settings::registry;
+    use patinae_settings::{registry, SettingEnum};
 
     fn execute(session: &mut Session, executor: &mut CommandExecutor, cmd: &str) -> CmdResult {
         let mut needs_redraw = false;
@@ -867,6 +867,74 @@ mod tests {
 
         let desc = registry::lookup_by_name("state").unwrap();
         assert_eq!(desc.get(&session.settings), SettingValue::Int(2));
+    }
+
+    #[test]
+    fn mouse_selection_mode_accepts_numeric_and_pymol_named_values() {
+        let mut session = Session::new();
+        let mut executor = CommandExecutor::new();
+        assert_eq!(
+            session.settings.ui.mouse_selection_mode,
+            patinae_settings::MouseSelectionMode::Residues
+        );
+        let values = [
+            (0, "atoms"),
+            (1, "residues"),
+            (2, "chains"),
+            (3, "segments"),
+            (4, "objects"),
+            (5, "molecules"),
+            (6, "C-alphas"),
+        ];
+
+        for (number, name) in values {
+            execute(
+                &mut session,
+                &mut executor,
+                &format!("set mouse_selection_mode, {number}"),
+            )
+            .unwrap();
+            assert_eq!(session.settings.ui.mouse_selection_mode.to_i32(), number);
+
+            execute(
+                &mut session,
+                &mut executor,
+                &format!("set mouse_selection_mode, {name}"),
+            )
+            .unwrap();
+            assert_eq!(session.settings.ui.mouse_selection_mode.to_i32(), number);
+        }
+    }
+
+    #[test]
+    fn dash_width_uses_typed_measurement_setting_path() {
+        let mut session = Session::new();
+        let mut executor = CommandExecutor::new();
+
+        execute(&mut session, &mut executor, "set dash_width, 4").unwrap();
+
+        assert_eq!(session.settings.measurement.dash_width, 4.0);
+        let descriptor = registry::lookup_by_name("dash_width").expect("registered dash_width");
+        assert_eq!(descriptor.get(&session.settings), SettingValue::Float(4.0));
+    }
+
+    #[test]
+    fn label_size_and_digits_use_typed_label_settings() {
+        let mut session = Session::new();
+        let mut executor = CommandExecutor::new();
+
+        assert_eq!(session.settings.label.size, 24.0);
+        execute(&mut session, &mut executor, "set label_size, 16").unwrap();
+        execute(&mut session, &mut executor, "set label_distance_digits, 2").unwrap();
+
+        assert_eq!(session.settings.label.size, 16.0);
+        assert_eq!(session.settings.label.distance_digits, 2);
+        assert_eq!(
+            registry::lookup_by_name("label_size")
+                .unwrap()
+                .get(&session.settings),
+            SettingValue::Float(16.0)
+        );
     }
 
     #[test]

@@ -7,7 +7,7 @@ use crate::Color;
 use ahash::AHashMap;
 
 /// Registry of named colors
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NamedPalette {
     colors: Vec<Color>,
     by_name: AHashMap<String, u32>,

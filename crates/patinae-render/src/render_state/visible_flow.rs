@@ -22,6 +22,13 @@ impl RenderState {
                 .filter_map(|id| self.scene.maps.get(id))
                 .filter(|entry| !entry.is_opaque)
                 .count() as u32
+            + self
+                .scene
+                .measurement_draw_order
+                .iter()
+                .filter_map(|id| self.scene.measurements.get(id))
+                .filter(|entry| !entry.is_opaque)
+                .count() as u32
     }
 
     pub(super) fn count_fast_overlay_reps(&self) -> u32 {
@@ -93,6 +100,8 @@ impl RenderState {
             entry.rep.record_translucent(&mut pass);
         }
         self.record_maps_opaque(&mut pass);
+        self.record_measurements_opaque(&mut pass);
+        self.record_measurement_labels(&mut pass);
     }
 
     pub(super) fn record_translucent_pass(&self, encoder: &mut wgpu::CommandEncoder, n_wboit: u32) {
@@ -172,6 +181,7 @@ impl RenderState {
             entry.rep.record_translucent(&mut pass);
         }
         self.record_maps_translucent(&mut pass);
+        self.record_measurements_translucent(&mut pass);
     }
 
     pub(super) fn record_fast_overlay_pass(
@@ -320,6 +330,43 @@ impl RenderState {
                 current = Some(entry.mode);
             }
             entry.record(pass);
+        }
+    }
+
+    fn record_measurements_opaque<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+        pass.set_pipeline(&self.geometry.measurement_pipeline.opaque);
+        for id in &self.scene.measurement_draw_order {
+            if let Some(entry) = self
+                .scene
+                .measurements
+                .get(id)
+                .filter(|entry| entry.is_opaque)
+            {
+                entry.record(pass);
+            }
+        }
+    }
+
+    fn record_measurements_translucent<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+        pass.set_pipeline(&self.geometry.measurement_pipeline.translucent);
+        for id in &self.scene.measurement_draw_order {
+            if let Some(entry) = self
+                .scene
+                .measurements
+                .get(id)
+                .filter(|entry| !entry.is_opaque)
+            {
+                entry.record(pass);
+            }
+        }
+    }
+
+    fn record_measurement_labels<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+        pass.set_pipeline(&self.geometry.measurement_pipeline.label);
+        for id in &self.scene.measurement_draw_order {
+            if let Some(entry) = self.scene.measurements.get(id) {
+                entry.record_labels(pass);
+            }
         }
     }
 }

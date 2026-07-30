@@ -15,7 +15,7 @@ mod molecule;
 pub use group::GroupObject;
 pub use label::{Label, LabelAnchor, LabelObject};
 pub use map::{MapData, MapDisplayMode, MapObject};
-pub use measurement::{Measurement, MeasurementObject, MeasurementType};
+pub use measurement::{Measurement, MeasurementAtomRef, MeasurementObject, MeasurementType};
 pub use molecule::MoleculeObject;
 pub use patinae_mol::DirtyFlags;
 

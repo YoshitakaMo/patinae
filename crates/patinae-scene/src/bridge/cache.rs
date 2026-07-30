@@ -5,7 +5,9 @@
 
 use std::cell::RefCell;
 
-use patinae_render::{RenderInput, RenderMapInput, RenderObjectInput, SceneLod};
+use patinae_render::{
+    RenderInput, RenderMapInput, RenderMeasurementInput, RenderObjectInput, SceneLod,
+};
 use patinae_settings::ResolvedSettings;
 
 use crate::session::Session;
@@ -46,6 +48,7 @@ impl CachedRenderScene {
 
         let mut objects = Vec::new();
         let mut maps = Vec::new();
+        let mut measurements = Vec::new();
         {
             let names = RefCell::new(&mut self.object_names);
             names.borrow_mut().clear();
@@ -62,6 +65,10 @@ impl CachedRenderScene {
                     record_object_name(&mut names.borrow_mut(), map.object_id.0, name);
                     maps.push(map);
                 },
+                &mut |name, measurement| {
+                    record_object_name(&mut names.borrow_mut(), measurement.object_id.0, name);
+                    measurements.push(measurement);
+                },
             );
         }
 
@@ -71,6 +78,7 @@ impl CachedRenderScene {
         CachedRenderFrame {
             objects,
             maps,
+            measurements,
             settings,
             lod,
         }
@@ -96,6 +104,7 @@ fn record_object_name(names: &mut Vec<Option<String>>, object_id: u32, name: &st
 pub struct CachedRenderFrame<'a> {
     objects: Vec<RenderObjectInput<'a>>,
     maps: Vec<RenderMapInput<'a>>,
+    measurements: Vec<RenderMeasurementInput>,
     settings: ResolvedSettings,
     lod: SceneLod,
 }
@@ -106,6 +115,7 @@ impl<'a> CachedRenderFrame<'a> {
         RenderInput {
             objects: &self.objects,
             maps: &self.maps,
+            measurements: &self.measurements,
             settings: &self.settings,
             lod: self.lod,
         }

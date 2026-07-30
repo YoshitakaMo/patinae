@@ -91,6 +91,7 @@ pub struct SceneObject {
 pub enum SceneObjectKind {
     Molecule,
     Map,
+    Measurement,
 }
 
 /// Visual subtype used by map rows in the Objects panel.
@@ -253,13 +254,15 @@ impl SceneModel {
                                 was_expanded.contains(child_name.as_str()),
                                 color_ctx,
                             ))
+                        } else if let Some(map) = registry.get_map(child_name) {
+                            Some(build_map_scene_object(
+                                child_name,
+                                map,
+                                was_expanded.contains(child_name.as_str()),
+                            ))
                         } else {
-                            registry.get_map(child_name).map(|map| {
-                                build_map_scene_object(
-                                    child_name,
-                                    map,
-                                    was_expanded.contains(child_name.as_str()),
-                                )
+                            registry.get_measurement(child_name).map(|measurement| {
+                                build_measurement_scene_object(child_name, measurement)
                             })
                         }
                     })
@@ -284,6 +287,12 @@ impl SceneModel {
                     map,
                     was_expanded.contains(top_name),
                 )));
+            } else if let Some(measurement) = registry.get_measurement(top_name) {
+                self.entries
+                    .push(SceneEntry::Object(build_measurement_scene_object(
+                        top_name,
+                        measurement,
+                    )));
             }
         }
     }
@@ -377,6 +386,20 @@ fn build_map_scene_object(
         map_visual_kind: Some(map_visual_kind(map.display_mode())),
         enabled: map.state().enabled,
         expanded,
+        subchains: Vec::new(),
+    }
+}
+
+fn build_measurement_scene_object(
+    name: &str,
+    measurement: &patinae_scene::MeasurementObject,
+) -> SceneObject {
+    SceneObject {
+        name: name.to_string(),
+        kind: SceneObjectKind::Measurement,
+        map_visual_kind: None,
+        enabled: measurement.state().enabled,
+        expanded: false,
         subchains: Vec::new(),
     }
 }
@@ -540,7 +563,7 @@ mod tests {
     use lin_alg::f32::Vec3;
     use patinae_algos::surface::Grid3D;
     use patinae_mol::{Atom, AtomBuilder, AtomFlags, Element, MoleculeBuilder, ObjectMolecule};
-    use patinae_scene::MapObject;
+    use patinae_scene::{MapObject, Measurement, MeasurementObject};
 
     fn poly_atom(chain: &str, resn: &str, resv: i32, name: &str) -> Atom {
         AtomBuilder::new()
@@ -646,6 +669,32 @@ mod tests {
     fn scene_model_starts_empty() {
         let model = SceneModel::new();
         assert!(model.entries.is_empty());
+    }
+
+    #[test]
+    fn scene_model_includes_measurement_objects() {
+        let mut registry = ObjectRegistry::default();
+        let mut measurement = MeasurementObject::new("dist1");
+        measurement.add_measurement(Measurement::distance(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(2.859, 0.0, 0.0),
+            [1.0, 1.0, 0.0, 1.0],
+        ));
+        registry.add(measurement);
+
+        let mut model = SceneModel::new();
+        let palette = ThemedPalette::dark();
+        let named = NamedPalette::default();
+        let ctx = SceneColorContext {
+            named_palette: &named,
+            palette: &palette,
+        };
+
+        assert!(model.sync(&registry, &ctx));
+        let object = model.get("dist1").expect("measurement row");
+        assert_eq!(object.kind, SceneObjectKind::Measurement);
+        assert!(object.enabled);
+        assert!(object.subchains.is_empty());
     }
 
     #[test]

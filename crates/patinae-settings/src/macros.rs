@@ -70,6 +70,20 @@ impl SettingKind for [f32; 3] {
     }
 }
 
+impl SettingKind for String {
+    fn setting_type() -> SettingType {
+        SettingType::String
+    }
+    fn wrap(&self) -> SettingValue {
+        SettingValue::String(self.clone())
+    }
+    fn unwrap_value(v: SettingValue) -> Result<Self, SettingError> {
+        v.as_string()
+            .map(str::to_owned)
+            .ok_or(SettingError::type_mismatch("string"))
+    }
+}
+
 impl SettingKind for Color {
     fn setting_type() -> SettingType {
         SettingType::Color
@@ -492,6 +506,8 @@ macro_rules! __patinae_settings_root_manifest {
                 line: LineSettings => LineOverrides,
                 dot: DotSettings => DotOverrides,
                 mesh: MeshSettings => MeshOverrides,
+                measurement: MeasurementSettings => MeasurementOverrides,
+                label: LabelSettings => LabelOverrides,
                 ellipsoid: EllipsoidSettings => EllipsoidOverrides,
             }
         }
@@ -582,7 +598,7 @@ macro_rules! define_settings_group {
 
             fn with_overrides(&self, o: &$Overrides) -> Self {
                 Self {
-                    $( $field: o.$field.unwrap_or(self.$field.clone()), )*
+                    $( $field: o.$field.clone().unwrap_or(self.$field.clone()), )*
                 }
             }
         }

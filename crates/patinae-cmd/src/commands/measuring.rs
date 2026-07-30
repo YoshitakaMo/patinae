@@ -11,7 +11,7 @@ use crate::command_help;
 use crate::commands::selecting::evaluate_selection;
 use crate::error::{CmdError, CmdResult};
 
-use patinae_scene::{Measurement, MeasurementObject};
+use patinae_scene::{Measurement, MeasurementAtomRef, MeasurementObject};
 
 /// Default measurement line color (yellow)
 const DEFAULT_COLOR: [f32; 4] = [1.0, 1.0, 0.0, 1.0];
@@ -22,8 +22,8 @@ pub fn register(registry: &mut CommandRegistry) {
     registry.register(DihedralCommand);
 }
 
-/// Resolve the first atom position from a selection expression.
-fn resolve_atom_position(viewer: &dyn ViewerLike, selection: &str) -> CmdResult<Vec3> {
+/// Resolve the first atom and its current position from a selection expression.
+fn resolve_atom(viewer: &dyn ViewerLike, selection: &str) -> CmdResult<(MeasurementAtomRef, Vec3)> {
     let results = evaluate_selection(viewer, selection)?;
     for (obj_name, selected) in &results {
         if let Some(mol_obj) = viewer.objects().get_molecule(obj_name) {
@@ -33,7 +33,13 @@ fn resolve_atom_position(viewer: &dyn ViewerLike, selection: &str) -> CmdResult<
                     .get_coord_set(mol_obj.display_state())
                     .and_then(|cs| cs.get_atom_coord(idx))
                 {
-                    return Ok(coord);
+                    return Ok((
+                        MeasurementAtomRef {
+                            object_name: obj_name.clone(),
+                            atom_index: idx.0,
+                        },
+                        coord,
+                    ));
                 }
             }
         }
@@ -54,6 +60,13 @@ fn add_measurement_to_scene(viewer: &mut dyn ViewerLike, name: &str, measurement
         viewer.objects_mut().add(meas_obj);
     }
     viewer.request_redraw();
+}
+
+fn automatic_name(viewer: &dyn ViewerLike, prefix: &str) -> String {
+    (1..)
+        .map(|index| format!("{prefix}{index:02}"))
+        .find(|name| viewer.objects().get(name).is_none())
+        .expect("unbounded measurement name sequence")
 }
 
 // ============================================================================
@@ -97,23 +110,31 @@ impl Command for DistanceCommand {
         ctx: &mut CommandContext<'v, 'r, dyn ViewerLike + 'v>,
         args: &ParsedCommand,
     ) -> CmdResult {
-        let name = args
-            .get_str(0)
-            .ok_or_else(|| CmdError::missing_argument("name"))?;
-        let sel1 = args
-            .get_str(1)
-            .ok_or_else(|| CmdError::missing_argument("selection1"))?;
-        let sel2 = args
-            .get_str(2)
-            .ok_or_else(|| CmdError::missing_argument("selection2"))?;
+        let (name, sel1, sel2) = match args.arg_count() {
+            0 => (automatic_name(ctx.viewer, "dist"), "pk1", "pk2"),
+            2 => (
+                automatic_name(ctx.viewer, "dist"),
+                args.get_str(0).unwrap_or("pk1"),
+                args.get_str(1).unwrap_or("pk2"),
+            ),
+            _ => (
+                args.get_str(0)
+                    .ok_or_else(|| CmdError::missing_argument("name"))?
+                    .to_string(),
+                args.get_str(1)
+                    .ok_or_else(|| CmdError::missing_argument("selection1"))?,
+                args.get_str(2)
+                    .ok_or_else(|| CmdError::missing_argument("selection2"))?,
+            ),
+        };
 
-        let p1 = resolve_atom_position(ctx.viewer, sel1)?;
-        let p2 = resolve_atom_position(ctx.viewer, sel2)?;
+        let (a1, p1) = resolve_atom(ctx.viewer, sel1)?;
+        let (a2, p2) = resolve_atom(ctx.viewer, sel2)?;
 
-        let measurement = Measurement::distance(p1, p2, DEFAULT_COLOR);
+        let measurement = Measurement::distance(p1, p2, DEFAULT_COLOR).with_atom_refs(vec![a1, a2]);
         let value = measurement.value;
 
-        add_measurement_to_scene(ctx.viewer, name, measurement);
+        add_measurement_to_scene(ctx.viewer, &name, measurement);
         ctx.print(&format!(" distance: {:.3} Angstroms", value));
 
         Ok(())
@@ -163,28 +184,37 @@ impl Command for AngleCommand {
         ctx: &mut CommandContext<'v, 'r, dyn ViewerLike + 'v>,
         args: &ParsedCommand,
     ) -> CmdResult {
-        let name = args
-            .get_str(0)
-            .ok_or_else(|| CmdError::missing_argument("name"))?;
-        let sel1 = args
-            .get_str(1)
-            .ok_or_else(|| CmdError::missing_argument("selection1"))?;
-        let sel2 = args
-            .get_str(2)
-            .ok_or_else(|| CmdError::missing_argument("selection2"))?;
-        let sel3 = args
-            .get_str(3)
-            .ok_or_else(|| CmdError::missing_argument("selection3"))?;
+        let (name, sel1, sel2, sel3) = match args.arg_count() {
+            0 => (automatic_name(ctx.viewer, "angle"), "pk1", "pk2", "pk3"),
+            3 => (
+                automatic_name(ctx.viewer, "angle"),
+                args.get_str(0).unwrap_or("pk1"),
+                args.get_str(1).unwrap_or("pk2"),
+                args.get_str(2).unwrap_or("pk3"),
+            ),
+            _ => (
+                args.get_str(0)
+                    .ok_or_else(|| CmdError::missing_argument("name"))?
+                    .to_string(),
+                args.get_str(1)
+                    .ok_or_else(|| CmdError::missing_argument("selection1"))?,
+                args.get_str(2)
+                    .ok_or_else(|| CmdError::missing_argument("selection2"))?,
+                args.get_str(3)
+                    .ok_or_else(|| CmdError::missing_argument("selection3"))?,
+            ),
+        };
 
-        let p1 = resolve_atom_position(ctx.viewer, sel1)?;
-        let p2 = resolve_atom_position(ctx.viewer, sel2)?;
-        let p3 = resolve_atom_position(ctx.viewer, sel3)?;
+        let (a1, p1) = resolve_atom(ctx.viewer, sel1)?;
+        let (a2, p2) = resolve_atom(ctx.viewer, sel2)?;
+        let (a3, p3) = resolve_atom(ctx.viewer, sel3)?;
 
-        let measurement = Measurement::angle(p1, p2, p3, DEFAULT_COLOR);
+        let measurement =
+            Measurement::angle(p1, p2, p3, DEFAULT_COLOR).with_atom_refs(vec![a1, a2, a3]);
         let value = measurement.value;
 
-        add_measurement_to_scene(ctx.viewer, name, measurement);
-        ctx.print(&format!(" angle: {:.1} degrees", value));
+        add_measurement_to_scene(ctx.viewer, &name, measurement);
+        ctx.print(&format!(" angle: {:.3} degrees", value));
 
         Ok(())
     }
@@ -235,33 +265,107 @@ impl Command for DihedralCommand {
         ctx: &mut CommandContext<'v, 'r, dyn ViewerLike + 'v>,
         args: &ParsedCommand,
     ) -> CmdResult {
-        let name = args
-            .get_str(0)
-            .ok_or_else(|| CmdError::missing_argument("name"))?;
-        let sel1 = args
-            .get_str(1)
-            .ok_or_else(|| CmdError::missing_argument("selection1"))?;
-        let sel2 = args
-            .get_str(2)
-            .ok_or_else(|| CmdError::missing_argument("selection2"))?;
-        let sel3 = args
-            .get_str(3)
-            .ok_or_else(|| CmdError::missing_argument("selection3"))?;
-        let sel4 = args
-            .get_str(4)
-            .ok_or_else(|| CmdError::missing_argument("selection4"))?;
+        let (name, sel1, sel2, sel3, sel4) = match args.arg_count() {
+            0 => (
+                automatic_name(ctx.viewer, "dihedral"),
+                "pk1",
+                "pk2",
+                "pk3",
+                "pk4",
+            ),
+            4 => (
+                automatic_name(ctx.viewer, "dihedral"),
+                args.get_str(0).unwrap_or("pk1"),
+                args.get_str(1).unwrap_or("pk2"),
+                args.get_str(2).unwrap_or("pk3"),
+                args.get_str(3).unwrap_or("pk4"),
+            ),
+            _ => (
+                args.get_str(0)
+                    .ok_or_else(|| CmdError::missing_argument("name"))?
+                    .to_string(),
+                args.get_str(1)
+                    .ok_or_else(|| CmdError::missing_argument("selection1"))?,
+                args.get_str(2)
+                    .ok_or_else(|| CmdError::missing_argument("selection2"))?,
+                args.get_str(3)
+                    .ok_or_else(|| CmdError::missing_argument("selection3"))?,
+                args.get_str(4)
+                    .ok_or_else(|| CmdError::missing_argument("selection4"))?,
+            ),
+        };
 
-        let p1 = resolve_atom_position(ctx.viewer, sel1)?;
-        let p2 = resolve_atom_position(ctx.viewer, sel2)?;
-        let p3 = resolve_atom_position(ctx.viewer, sel3)?;
-        let p4 = resolve_atom_position(ctx.viewer, sel4)?;
+        let (a1, p1) = resolve_atom(ctx.viewer, sel1)?;
+        let (a2, p2) = resolve_atom(ctx.viewer, sel2)?;
+        let (a3, p3) = resolve_atom(ctx.viewer, sel3)?;
+        let (a4, p4) = resolve_atom(ctx.viewer, sel4)?;
 
-        let measurement = Measurement::dihedral(p1, p2, p3, p4, DEFAULT_COLOR);
+        let measurement = Measurement::dihedral(p1, p2, p3, p4, DEFAULT_COLOR)
+            .with_atom_refs(vec![a1, a2, a3, a4]);
         let value = measurement.value;
 
-        add_measurement_to_scene(ctx.viewer, name, measurement);
-        ctx.print(&format!(" dihedral: {:.1} degrees", value));
+        add_measurement_to_scene(ctx.viewer, &name, measurement);
+        ctx.print(&format!(" dihedral: {:.3} degrees", value));
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::CommandExecutor;
+    use patinae_mol::{AtomBuilder, MoleculeBuilder};
+    use patinae_scene::{MoleculeObject, Session, SessionAdapter};
+
+    #[test]
+    fn distance_command_keeps_source_atom_references() {
+        let molecule = MoleculeBuilder::new("traj")
+            .add_atom(
+                AtomBuilder::new().name("A").element_symbol("C").build(),
+                Vec3::new(0.0, 0.0, 0.0),
+            )
+            .add_atom(
+                AtomBuilder::new().name("B").element_symbol("C").build(),
+                Vec3::new(2.0, 0.0, 0.0),
+            )
+            .build();
+        let mut session = Session::new();
+        session
+            .registry
+            .add(MoleculeObject::with_name(molecule, "traj"));
+        let mut executor = CommandExecutor::new();
+
+        let mut needs_redraw = false;
+        let mut adapter = SessionAdapter {
+            session: &mut session,
+            render_context: None,
+            default_size: (800, 600),
+            needs_redraw: &mut needs_redraw,
+            async_fetch_fn: None,
+        };
+        executor
+            .do_with_options(&mut adapter, "distance dist1, name A, name B", false)
+            .unwrap();
+        drop(adapter);
+
+        let measurement = &session
+            .registry
+            .get_measurement("dist1")
+            .unwrap()
+            .measurements()[0];
+        assert_eq!(
+            measurement.atom_refs,
+            [
+                MeasurementAtomRef {
+                    object_name: "traj".into(),
+                    atom_index: 0,
+                },
+                MeasurementAtomRef {
+                    object_name: "traj".into(),
+                    atom_index: 1,
+                },
+            ]
+        );
     }
 }

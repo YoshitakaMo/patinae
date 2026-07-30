@@ -200,6 +200,12 @@ impl RenderState {
         let map_params_layout = MapParamsLayout::new(&ctx.device);
 
         let map_pipeline = MapPipeline::new(&ctx, &map_params_layout);
+        let measurement_params_layout =
+            crate::pipelines::measurement::MeasurementParamsLayout::new(&ctx.device, &ctx.queue);
+        let measurement_pipeline = crate::pipelines::measurement::MeasurementPipeline::new(
+            &ctx,
+            &measurement_params_layout,
+        );
 
         let mesh_params_layout = MeshParamsLayout::new(&ctx.device);
 
@@ -341,8 +347,10 @@ impl RenderState {
                 scene_store,
                 reps: HashMap::new(),
                 maps: HashMap::new(),
+                measurements: HashMap::new(),
                 draw_order: Vec::new(),
                 map_draw_order: Vec::new(),
+                measurement_draw_order: Vec::new(),
                 scene_dirty: true,
                 cull_pass_initialized: false,
                 last_cull_view_proj_hash: 0,
@@ -378,6 +386,8 @@ impl RenderState {
                 dot_pipeline,
                 map_params_layout,
                 map_pipeline,
+                measurement_params_layout,
+                measurement_pipeline,
                 mesh_pipeline,
                 ellipsoid_pipeline,
                 cartoon_pipeline,

@@ -17,10 +17,20 @@ use crate::object::{Object, ObjectRegistry};
 /// per-atom resolve loop costs ~10–20 ms/frame; reusing the previous
 /// frame's buffers when no colour-affecting state changed is the
 /// difference between sub-30 FPS and 60+ FPS at the host layer.
-#[derive(Default)]
 pub struct ResolvedSceneColors {
     by_object: HashMap<String, Vec<[f32; 4]>>,
     rep_by_object: HashMap<String, Vec<RepColorLutEntry>>,
+    named: NamedPalette,
+}
+
+impl Default for ResolvedSceneColors {
+    fn default() -> Self {
+        Self {
+            by_object: HashMap::new(),
+            rep_by_object: HashMap::new(),
+            named: NamedPalette::new(),
+        }
+    }
 }
 
 /// Resolve a global/object color setting through the active named palette.
@@ -65,6 +75,7 @@ impl ResolvedSceneColors {
         named: &NamedPalette,
         themed: &ThemedPalette,
     ) {
+        self.named = named.clone();
         // Drop entries for objects that are gone / disabled / coord-less so
         // `get` doesn't return stale colours.
         self.by_object.retain(|name, _| {
@@ -168,6 +179,10 @@ impl ResolvedSceneColors {
 
     pub fn get_rep(&self, name: &str) -> Option<&[RepColorLutEntry]> {
         self.rep_by_object.get(name).map(|v| v.as_slice())
+    }
+
+    pub fn resolve_setting_color(&self, setting: SettingColor, fallback: [f32; 4]) -> [f32; 4] {
+        resolve_setting_color(setting, &self.named, fallback)
     }
 }
 

@@ -21,6 +21,7 @@ pub mod dot;
 pub mod ellipsoid;
 pub mod line;
 pub mod map;
+pub mod measurement;
 pub mod mesh;
 pub mod sphere;
 pub mod stick;

@@ -36,6 +36,9 @@ pub const DOT_WGSL: &str = include_str!("shaders/representations/dot.wgsl");
 pub const DOT_PICKING_WGSL: &str = include_str!("shaders/picking/dot.wgsl");
 pub const MESH_WGSL: &str = include_str!("shaders/representations/mesh.wgsl");
 pub const MAP_WGSL: &str = include_str!("shaders/representations/map.wgsl");
+pub const MEASUREMENT_WGSL: &str = include_str!("shaders/representations/measurement.wgsl");
+pub const MEASUREMENT_LABEL_WGSL: &str =
+    include_str!("shaders/representations/measurement_label.wgsl");
 pub const STD_VERTEX_PICKING_WGSL: &str = include_str!("shaders/picking/std_vertex.wgsl");
 pub const CARTOON_WGSL: &str = include_str!("shaders/representations/cartoon.wgsl");
 pub const SURFACE_WGSL: &str = include_str!("shaders/representations/surface.wgsl");
@@ -141,6 +144,8 @@ mod tests {
             ("patinae.dot_picking", DOT_PICKING_WGSL),
             ("patinae.mesh", MESH_WGSL),
             ("patinae.map", MAP_WGSL),
+            ("patinae.measurement", MEASUREMENT_WGSL),
+            ("patinae.measurement_label", MEASUREMENT_LABEL_WGSL),
             ("patinae.std_vertex_picking", STD_VERTEX_PICKING_WGSL),
             ("patinae.cartoon", CARTOON_WGSL),
             ("patinae.surface", SURFACE_WGSL),

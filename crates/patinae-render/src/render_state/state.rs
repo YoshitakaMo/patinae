@@ -17,6 +17,7 @@ use crate::compute::surface_vdw_sdf::SurfaceVdwSdfCompute;
 use crate::context::RenderContext;
 use crate::frame::FrameTargets;
 use crate::map_contour::MapEntry;
+use crate::measurement_geometry::MeasurementEntry;
 use crate::memory_policy::RenderMemoryPolicy;
 use crate::passes::atlas_ao::AtlasAoPass;
 use crate::passes::selection_dots::SelectionDotsPass;
@@ -31,6 +32,7 @@ use crate::pipelines::dot::DotPipeline;
 use crate::pipelines::ellipsoid::{EllipsoidParamsLayout, EllipsoidPipeline};
 use crate::pipelines::line::LinePipeline;
 use crate::pipelines::map::{MapParamsLayout, MapPipeline};
+use crate::pipelines::measurement::{MeasurementParamsLayout, MeasurementPipeline};
 use crate::pipelines::mesh::{MeshParamsLayout, MeshPipeline};
 use crate::pipelines::sphere::{SphereParamsLayout, SpherePipeline};
 use crate::pipelines::stick::{StickParamsLayout, StickPipeline};
@@ -102,6 +104,7 @@ pub(super) struct SceneRuntime {
     pub(super) scene_store: SceneStore,
     pub(super) reps: HashMap<(u32, RepKind), RepEntry>,
     pub(super) maps: HashMap<u32, MapEntry>,
+    pub(super) measurements: HashMap<u32, MeasurementEntry>,
     /// Stable draw order grouped by `RepKind`, so passes (picking,
     /// depth_prepass, translucent) hit the same pipeline in long runs and
     /// behave deterministically across frames. `HashMap::values()` order is
@@ -110,6 +113,7 @@ pub(super) struct SceneRuntime {
     pub(super) draw_order: Vec<(u32, RepKind)>,
     /// Stable draw order for first-class map contour objects.
     pub(super) map_draw_order: Vec<u32>,
+    pub(super) measurement_draw_order: Vec<u32>,
     /// Set by `sync` and viewport LOD transitions when scene-affecting data
     /// invalidates cached render-side state.
     pub(super) scene_dirty: bool,
@@ -157,6 +161,8 @@ pub struct GeometryRuntime {
     pub(crate) dot_pipeline: DotPipeline,
     pub(crate) map_params_layout: MapParamsLayout,
     pub(crate) map_pipeline: MapPipeline,
+    pub(crate) measurement_params_layout: MeasurementParamsLayout,
+    pub(crate) measurement_pipeline: MeasurementPipeline,
     pub(crate) mesh_pipeline: MeshPipeline,
     pub(crate) ellipsoid_pipeline: EllipsoidPipeline,
     pub(crate) cartoon_pipeline: CartoonPipeline,

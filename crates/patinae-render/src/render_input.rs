@@ -115,6 +115,7 @@ pub struct MarkerUpdate {
 pub struct RenderInput<'a> {
     pub objects: &'a [RenderObjectInput<'a>],
     pub maps: &'a [RenderMapInput<'a>],
+    pub measurements: &'a [RenderMeasurementInput],
     pub settings: &'a ResolvedSettings,
     /// Scene-wide level-of-detail bucket, derived from the sum of atoms
     /// across all visible objects. Reps that produce O(N²)-ish vertex
@@ -127,6 +128,43 @@ pub struct RenderInput<'a> {
     /// Sphere and stick use this only for the `Minimum` bucket's automatic
     /// sampling.
     pub lod: SceneLod,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MeasurementSegment {
+    pub p0: [f32; 3],
+    pub p1: [f32; 3],
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RenderMeasurementInput {
+    pub object_id: ObjectId,
+    pub segments: Vec<MeasurementSegment>,
+    pub labels: Vec<RenderMeasurementLabel>,
+    pub color: [f32; 4],
+    pub label_color: [f32; 4],
+    pub label_outline_color: [f32; 4],
+    pub label_bg_color: [f32; 4],
+    pub label_connector_color: [f32; 4],
+    /// Label font size in screen pixels.
+    pub label_size: f32,
+    pub label_padding: [f32; 3],
+    pub label_bg_outline: bool,
+    pub label_connector: bool,
+    pub label_connector_width: f32,
+    pub label_connector_ext_length: f32,
+    pub label_shadow_mode: i32,
+    pub label_z_target: i32,
+    /// Screen-space dash width in physical pixels.
+    pub dash_width: f32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RenderMeasurementLabel {
+    pub anchor: [f32; 3],
+    pub text: String,
+    /// Screen-space placement offset in pixels.
+    pub offset_px: [f32; 2],
 }
 
 /// Renderable map contour mode.

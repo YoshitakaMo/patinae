@@ -8,11 +8,11 @@ use patinae_scene::{
         resolve_pick, visit_render_objects, visit_render_scene, ResolvedSceneColors,
         ResolvedSceneMarkers,
     },
-    HoverTarget, MapDisplayMode, MapObject, MoleculeObject, ObjectRegistry, SelectionManager,
-    Session,
+    HoverTarget, MapDisplayMode, MapObject, Measurement, MeasurementAtomRef, MeasurementObject,
+    MoleculeObject, ObjectRegistry, SelectionManager, Session,
 };
 use patinae_select::SelectionResult;
-use patinae_settings::Settings;
+use patinae_settings::{Settings, ThemeMode};
 use std::cell::RefCell;
 
 fn registry_with_two_atoms() -> ObjectRegistry {
@@ -73,6 +73,7 @@ fn collect_render_object_ids(registry: &ObjectRegistry) -> Vec<(String, u32)> {
         &markers,
         &mut |name, obj| ids.push((name.to_string(), obj.object_id.0)),
         &mut |_name, _map| {},
+        &mut |_name, _measurement| {},
     );
 
     ids
@@ -398,10 +399,155 @@ fn visit_render_scene_emits_renderable_maps_in_order() {
             names.borrow_mut().push(name.to_string());
             map_ids.push(map.object_id.0);
         },
+        &mut |_name, _measurement| {},
     );
 
     assert_eq!(names.into_inner(), ["obj", "mesh1"]);
     assert_eq!(map_ids, [2]);
+}
+
+#[test]
+fn light_theme_measurement_uses_black_label_and_dash() {
+    let mut registry = ObjectRegistry::new();
+    let mut object = MeasurementObject::new("dist1");
+    object.add_measurement(Measurement::distance(
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(2.859, 0.0, 0.0),
+        [1.0, 1.0, 0.0, 1.0],
+    ));
+    registry.add(object);
+
+    let mut settings = Settings::default();
+    settings.ui.theme = ThemeMode::Light;
+    settings.measurement.dash_width = 4.0;
+    let colors = ResolvedSceneColors::build(
+        &registry,
+        &settings,
+        &NamedPalette::new(),
+        &ThemedPalette::light(),
+    );
+    let markers = ResolvedSceneMarkers::default();
+    let mut rendered = Vec::new();
+    visit_render_scene(
+        &registry,
+        &settings,
+        &colors,
+        &markers,
+        &mut |_name, _object| {},
+        &mut |_name, _map| {},
+        &mut |_name, measurement| rendered.push(measurement),
+    );
+
+    assert_eq!(rendered.len(), 1);
+    assert_eq!(rendered[0].color, [0.0, 0.0, 0.0, 1.0]);
+    assert_eq!(rendered[0].label_color, [0.0, 0.0, 0.0, 1.0]);
+    assert_eq!(rendered[0].label_size, 24.0);
+    assert_eq!(rendered[0].dash_width, 4.0);
+    assert_eq!(rendered[0].labels[0].text, "2.859");
+}
+
+#[test]
+fn measurement_bridge_applies_label_size_and_kind_specific_digits() {
+    let mut registry = ObjectRegistry::new();
+    let mut measurement = MeasurementObject::new("dist1");
+    measurement.add_measurement(Measurement::distance(
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(2.859, 0.0, 0.0),
+        [1.0, 1.0, 0.0, 1.0],
+    ));
+    registry.add(measurement);
+
+    let mut settings = Settings::default();
+    settings.label.size = 16.0;
+    settings.label.distance_digits = 2;
+    let colors = ResolvedSceneColors::build(
+        &registry,
+        &settings,
+        &NamedPalette::new(),
+        &ThemedPalette::dark(),
+    );
+    let markers = ResolvedSceneMarkers::default();
+    let mut rendered = Vec::new();
+    visit_render_scene(
+        &registry,
+        &settings,
+        &colors,
+        &markers,
+        &mut |_name, _object| {},
+        &mut |_name, _map| {},
+        &mut |_name, measurement| rendered.push(measurement),
+    );
+
+    assert_eq!(rendered[0].label_size, 16.0);
+    assert_eq!(rendered[0].labels[0].text, "2.86");
+}
+
+#[test]
+fn measurement_bridge_recomputes_from_current_trajectory_state() {
+    let mut molecule = ObjectMolecule::new("traj");
+    molecule.add_atom(AtomBuilder::new().name("A").element_symbol("C").build());
+    molecule.add_atom(AtomBuilder::new().name("B").element_symbol("C").build());
+    molecule.add_coord_set(CoordSet::from_vec3(&[
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(1.0, 0.0, 0.0),
+    ]));
+    molecule.add_coord_set(CoordSet::from_vec3(&[
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(3.0, 0.0, 0.0),
+    ]));
+
+    let mut registry = ObjectRegistry::new();
+    registry.add(MoleculeObject::with_name(molecule, "traj"));
+    let mut measurement_object = MeasurementObject::new("dist1");
+    measurement_object.add_measurement(
+        Measurement::distance(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            [1.0, 1.0, 0.0, 1.0],
+        )
+        .with_atom_refs(vec![
+            MeasurementAtomRef {
+                object_name: "traj".into(),
+                atom_index: 0,
+            },
+            MeasurementAtomRef {
+                object_name: "traj".into(),
+                atom_index: 1,
+            },
+        ]),
+    );
+    registry.add(measurement_object);
+
+    let settings = Settings::default();
+    let palette = NamedPalette::new();
+    let markers = ResolvedSceneMarkers::default();
+    let render_measurement = |registry: &ObjectRegistry| {
+        let colors =
+            ResolvedSceneColors::build(registry, &settings, &palette, &ThemedPalette::dark());
+        let mut rendered = Vec::new();
+        visit_render_scene(
+            registry,
+            &settings,
+            &colors,
+            &markers,
+            &mut |_name, _object| {},
+            &mut |_name, _map| {},
+            &mut |_name, measurement| {
+                rendered.push((measurement.labels[0].text.clone(), measurement.segments));
+            },
+        );
+        rendered.pop().unwrap()
+    };
+
+    let first = render_measurement(&registry);
+    assert_eq!(first.0, "1.000");
+    assert!(registry
+        .get_molecule_mut("traj")
+        .unwrap()
+        .set_display_state(1));
+    let second = render_measurement(&registry);
+    assert_eq!(second.0, "3.000");
+    assert_ne!(first.1, second.1);
 }
 
 #[test]

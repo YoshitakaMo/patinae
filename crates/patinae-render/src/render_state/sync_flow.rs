@@ -389,6 +389,37 @@ impl RenderState {
         }
         timings.map_sync_ms = sync_elapsed(&mut now_ms, t0);
 
+        let mut keep_measurements: HashSet<u32> = HashSet::with_capacity(input.measurements.len());
+        for measurement in input.measurements {
+            keep_measurements.insert(measurement.object_id.0);
+            if let Some(entry) = self.scene.measurements.get_mut(&measurement.object_id.0) {
+                if entry.sync(measurement, &self.ctx.device, &self.ctx.queue) {
+                    scene_changed = true;
+                }
+            } else {
+                self.scene.measurements.insert(
+                    measurement.object_id.0,
+                    crate::measurement_geometry::MeasurementEntry::new(
+                        measurement,
+                        &self.ctx.device,
+                        &self.ctx.queue,
+                        &self.geometry.measurement_params_layout,
+                    ),
+                );
+                scene_changed = true;
+            }
+        }
+        self.scene
+            .measurements
+            .retain(|id, _| keep_measurements.contains(id));
+        self.scene.measurement_draw_order.clear();
+        self.scene.measurement_draw_order.extend(
+            input
+                .measurements
+                .iter()
+                .map(|measurement| measurement.object_id.0),
+        );
+
         // Rebuild stable draw order. Sort by `RepKind` discriminant first so
 
         // every pass groups pipeline switches; tie-break by `object_id` for

@@ -123,6 +123,66 @@ mod tests {
 
         let d = lookup_by_name("mouse_selection_mode").unwrap();
         assert_eq!(d.value_hints.len(), 7);
+        assert_eq!(
+            d.get(&Settings::default()),
+            SettingValue::Int(1),
+            "mouse selection should default to residues"
+        );
+    }
+
+    #[test]
+    fn measurement_dash_settings_are_registered() {
+        let width = lookup_by_name("dash_width").expect("dash_width");
+        let length = lookup_by_name("dash_length").expect("dash_length");
+        let gap = lookup_by_name("dash_gap").expect("dash_gap");
+
+        let settings = Settings::default();
+        assert_eq!(width.get(&settings), SettingValue::Float(2.5));
+        assert_eq!(length.get(&settings), SettingValue::Float(0.15));
+        assert_eq!(gap.get(&settings), SettingValue::Float(0.45));
+    }
+
+    #[test]
+    fn pymol_label_settings_are_registered_with_patinae_defaults() {
+        let names = [
+            "label_anchor",
+            "label_distance_digits",
+            "label_angle_digits",
+            "label_font_id",
+            "label_bg_color",
+            "label_multiline_justification",
+            "label_bg_outline",
+            "label_multiline_spacing",
+            "label_bg_transparency",
+            "label_outline_color",
+            "label_color",
+            "label_padding",
+            "label_connector",
+            "label_placement_offset",
+            "label_position",
+            "label_connector_color",
+            "label_relative_mode",
+            "label_connector_ext_length",
+            "label_screen_point",
+            "label_connector_mode",
+            "label_shadow_mode",
+            "label_connector_width",
+            "label_digits",
+            "label_size",
+            "label_dihedral_digits",
+            "label_z_target",
+        ];
+        assert!(names.iter().all(|name| lookup_by_name(name).is_some()));
+
+        let settings = Settings::default();
+        assert_eq!(
+            lookup_by_name("label_size").unwrap().get(&settings),
+            SettingValue::Float(24.0)
+        );
+        assert_eq!(
+            lookup_by_name("label_digits").unwrap().get(&settings),
+            SettingValue::Int(3)
+        );
     }
 
     #[test]

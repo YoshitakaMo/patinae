@@ -17,6 +17,7 @@ pub mod frame;
 mod geometry_export;
 pub(crate) mod lut_buffer;
 mod map_contour;
+mod measurement_geometry;
 pub mod memory;
 mod memory_policy;
 mod memory_recovery;
@@ -76,8 +77,9 @@ pub use render_artifacts::{
     RenderArtifactRep, RenderArtifactSnapshot, RENDER_ARTIFACT_LAYOUT_VERSION,
 };
 pub use render_input::{
-    pack_rep_rgb8, ColorLutEntry, MarkerUpdate, RenderInput, RenderMapInput, RenderMapMode,
-    RenderObjectInput, RepColorLutEntry, SceneLod, REP_COLOR_INHERIT,
+    pack_rep_rgb8, ColorLutEntry, MarkerUpdate, MeasurementSegment, RenderInput, RenderMapInput,
+    RenderMapMode, RenderMeasurementInput, RenderMeasurementLabel, RenderObjectInput,
+    RepColorLutEntry, SceneLod, REP_COLOR_INHERIT,
 };
 pub use render_state::{RenderState, RenderSyncTimings};
 pub use representation_budget::{

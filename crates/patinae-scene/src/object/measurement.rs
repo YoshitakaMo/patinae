@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use super::{Object, ObjectState, ObjectType};
 
 /// Arc radius as fraction of the shorter leg length
-const ANGLE_SIZE: f32 = 0.4;
-/// Scale factor to push label outside the arc
-const LABEL_OFFSET: f32 = 1.3;
+const ANGLE_SIZE: f32 = 0.6666;
+const ANGLE_LABEL_POSITION: f32 = 0.5;
+const DIHEDRAL_LABEL_POSITION: f32 = 1.2;
 
 // ── Arc geometry ─────────────────────────────────────────────────────────────
 
@@ -59,7 +59,7 @@ impl ArcGeometry {
     /// The arc is centered at the midpoint of the p2–p3 bond. The flanking
     /// bond vectors are projected onto the plane perpendicular to the central
     /// bond to define the arc axes.
-    fn for_dihedral(p1: Vec3, p2: Vec3, p3: Vec3, p4: Vec3, value_degrees: f64) -> Option<Self> {
+    fn for_dihedral(p1: Vec3, p2: Vec3, p3: Vec3, p4: Vec3) -> Option<Self> {
         let bond_dir = p3 - p2;
         let bond_len = bond_dir.magnitude();
         if bond_len < 1e-6 {
@@ -82,14 +82,16 @@ impl ArcGeometry {
             center: (p2 + p3) * 0.5,
             x_axis,
             y_axis,
-            arc_angle: (value_degrees as f32).to_radians(),
+            // PyMOL draws the unsigned angle between the projected arms.
+            arc_angle: (proj1.dot(proj2) / (proj1_len * proj2_len))
+                .clamp(-1.0, 1.0)
+                .acos(),
         })
     }
 
-    /// Label position: at the half-angle, pushed out beyond the arc radius.
-    fn label_position(&self) -> Vec3 {
+    fn label_position(&self, scale: f32) -> Vec3 {
         let half = self.arc_angle * 0.5;
-        self.center + (self.x_axis * half.cos() + self.y_axis * half.sin()) * LABEL_OFFSET
+        self.center + (self.x_axis * half.cos() + self.y_axis * half.sin()) * scale
     }
 }
 
@@ -127,6 +129,13 @@ pub enum MeasurementType {
     Dihedral,
 }
 
+/// Stable source atom for a trajectory-aware measurement.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MeasurementAtomRef {
+    pub object_name: String,
+    pub atom_index: u32,
+}
+
 /// A single measurement entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Measurement {
@@ -144,6 +153,10 @@ pub struct Measurement {
     pub label_position: Vec3,
     /// Color for the dashed lines (RGBA)
     pub color: [f32; 4],
+    /// Original atoms used to create this measurement. Empty for legacy or
+    /// coordinate-only measurements.
+    #[serde(default)]
+    pub atom_refs: Vec<MeasurementAtomRef>,
 }
 
 impl Measurement {
@@ -154,9 +167,10 @@ impl Measurement {
             kind: MeasurementType::Distance,
             points: vec![p1, p2],
             value,
-            label: format!("{:.1}", value),
+            label: format!("{:.3}", value),
             label_position: (p1 + p2) * 0.5,
             color,
+            atom_refs: Vec::new(),
         }
     }
 
@@ -174,28 +188,32 @@ impl Measurement {
         };
 
         let arc = ArcGeometry::for_angle(p1, p2, p3, value);
-        let label_position = arc.as_ref().map(|a| a.label_position()).unwrap_or_else(|| {
-            // Degenerate: fall back to bisector
-            let n1 = if len1 > 1e-6 {
-                v1 / len1
-            } else {
-                Vec3::new(0.0, 0.0, 0.0)
-            };
-            let n2 = if len2 > 1e-6 {
-                v2 / len2
-            } else {
-                Vec3::new(0.0, 0.0, 0.0)
-            };
-            p2 + (n1 + n2) * 0.75
-        });
+        let label_position = arc
+            .as_ref()
+            .map(|a| a.label_position(ANGLE_LABEL_POSITION))
+            .unwrap_or_else(|| {
+                // Degenerate: fall back to bisector
+                let n1 = if len1 > 1e-6 {
+                    v1 / len1
+                } else {
+                    Vec3::new(0.0, 0.0, 0.0)
+                };
+                let n2 = if len2 > 1e-6 {
+                    v2 / len2
+                } else {
+                    Vec3::new(0.0, 0.0, 0.0)
+                };
+                p2 + (n1 + n2) * 0.75
+            });
 
         Self {
             kind: MeasurementType::Angle,
             points: vec![p1, p2, p3],
             value,
-            label: format!("{:.1}", value),
+            label: format!("{:.3}", value),
             label_position,
             color,
+            atom_refs: Vec::new(),
         }
     }
 
@@ -225,21 +243,145 @@ impl Measurement {
             0.0
         };
 
-        let arc = ArcGeometry::for_dihedral(p1, p2, p3, p4, value);
+        let arc = ArcGeometry::for_dihedral(p1, p2, p3, p4);
         let label_position = arc
             .as_ref()
-            .map(|a| a.label_position())
+            .map(|a| a.label_position(DIHEDRAL_LABEL_POSITION))
             .unwrap_or_else(|| (p2 + p3) * 0.5);
 
         Self {
             kind: MeasurementType::Dihedral,
             points: vec![p1, p2, p3, p4],
             value,
-            label: format!("{:.1}", value),
+            label: format!("{:.3}", value),
             label_position,
             color,
+            atom_refs: Vec::new(),
         }
     }
+
+    pub fn with_atom_refs(mut self, atom_refs: Vec<MeasurementAtomRef>) -> Self {
+        self.atom_refs = atom_refs;
+        self
+    }
+
+    /// Generate the visible PyMOL-style dash and helper-line segments.
+    pub fn segments(&self, dash_length: f32, dash_gap: f32) -> Vec<[Vec3; 2]> {
+        match self.kind {
+            MeasurementType::Distance => {
+                dash_segments(self.points[0], self.points[1], dash_length, dash_gap)
+            }
+            MeasurementType::Angle => {
+                let Some(arc) = ArcGeometry::for_angle(
+                    self.points[0],
+                    self.points[1],
+                    self.points[2],
+                    self.value,
+                ) else {
+                    return Vec::new();
+                };
+                arc_segments(
+                    arc.center,
+                    arc.x_axis,
+                    arc.y_axis,
+                    arc.arc_angle,
+                    dash_length,
+                    dash_gap,
+                )
+            }
+            MeasurementType::Dihedral => {
+                let Some(arc) = ArcGeometry::for_dihedral(
+                    self.points[0],
+                    self.points[1],
+                    self.points[2],
+                    self.points[3],
+                ) else {
+                    return Vec::new();
+                };
+                let start = arc.center + arc.x_axis;
+                let end = arc.center
+                    + arc.x_axis * arc.arc_angle.cos()
+                    + arc.y_axis * arc.arc_angle.sin();
+                let mut segments = vec![[start, arc.center], [end, arc.center]];
+                segments.extend(arc_segments(
+                    arc.center,
+                    arc.x_axis,
+                    arc.y_axis,
+                    arc.arc_angle,
+                    dash_length,
+                    dash_gap,
+                ));
+                segments
+            }
+        }
+    }
+}
+
+/// Split a line symmetrically around its midpoint, matching RepDistDash.
+pub fn dash_segments(p1: Vec3, p2: Vec3, dash_length: f32, dash_gap: f32) -> Vec<[Vec3; 2]> {
+    let delta = p2 - p1;
+    let length = delta.magnitude();
+    if length < 1e-6 {
+        return Vec::new();
+    }
+    if dash_gap <= 1e-6 {
+        return vec![[p1, p2]];
+    }
+    let dash = dash_length.max(1e-6);
+    let period = dash + dash_gap;
+    let direction = delta / length;
+    let mut result = Vec::new();
+    let mut start = length * 0.5 + dash_gap * 0.5;
+    while start < length {
+        let end = (start + dash).min(length);
+        if end > start {
+            result.push([p1 + direction * start, p1 + direction * end]);
+        }
+        start += period;
+    }
+    let mut end = length * 0.5 - dash_gap * 0.5;
+    while end > 0.0 {
+        let start = (end - dash).max(0.0);
+        if end > start {
+            result.push([p1 + direction * start, p1 + direction * end]);
+        }
+        end -= period;
+    }
+    result
+}
+
+fn arc_segments(
+    center: Vec3,
+    x_axis: Vec3,
+    y_axis: Vec3,
+    angle: f32,
+    dash_length: f32,
+    dash_gap: f32,
+) -> Vec<[Vec3; 2]> {
+    let radius = x_axis.magnitude();
+    if radius < 1e-6 || angle.abs() < 1e-6 {
+        return Vec::new();
+    }
+    // RepAngle uses twice the geometric arc length for dash phase/density.
+    let length = angle.abs() * radius * 2.0;
+    let period = (dash_length + dash_gap).max(1e-6);
+    let phase = period - (length * 0.5 + dash_gap * 0.5).rem_euclid(period);
+    let mut pos = -phase;
+    let mut result = Vec::new();
+    while pos < length {
+        let from = pos.max(0.0);
+        let to = (pos + dash_length).min(length);
+        if to > from {
+            let a0 = angle * from / length;
+            let a1 = angle * to / length;
+            result.push([
+                center + x_axis * a0.cos() + y_axis * a0.sin(),
+                center + x_axis * a1.cos() + y_axis * a1.sin(),
+            ]);
+        }
+        pos += period;
+    }
+    result
 }
 
 // ── Measurement object ───────────────────────────────────────────────────────
@@ -511,7 +653,6 @@ mod tests {
                         self.points[1],
                         self.points[2],
                         self.points[3],
-                        self.value,
                     ) {
                         verts.extend(generate_arc_dash_vertices(
                             arc.center,
@@ -533,7 +674,7 @@ mod tests {
         let p2 = Vec3::new(3.0, 4.0, 0.0);
         let m = Measurement::distance(p1, p2, DEFAULT_COLOR);
         assert!((m.value - 5.0).abs() < 1e-6);
-        assert_eq!(m.label, "5.0");
+        assert_eq!(m.label, "5.000");
         assert_eq!(m.points.len(), 2);
     }
 
@@ -602,7 +743,7 @@ mod tests {
         let labels = obj.collect_labels();
         assert_eq!(labels.len(), 1);
         assert_eq!(labels[0].0, Vec3::new(5.0, 0.0, 0.0)); // midpoint
-        assert_eq!(labels[0].1, "10.0"); // distance
+        assert_eq!(labels[0].1, "10.000"); // distance
     }
 
     #[test]

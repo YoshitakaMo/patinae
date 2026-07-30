@@ -741,6 +741,7 @@ impl CaptureRenderer for ViewportRenderer {
         let markers = ResolvedSceneMarkers::default();
         let mut object_inputs = Vec::new();
         let mut map_inputs = Vec::new();
+        let mut measurement_inputs = Vec::new();
         visit_render_scene(
             registry,
             settings,
@@ -748,6 +749,7 @@ impl CaptureRenderer for ViewportRenderer {
             &markers,
             &mut |_name, obj| object_inputs.push(obj),
             &mut |_name, map| map_inputs.push(map),
+            &mut |_name, measurement| measurement_inputs.push(measurement),
         );
 
         let frame = frame_uniforms_from_camera(camera, settings, (width, height), clear_color);
@@ -760,6 +762,7 @@ impl CaptureRenderer for ViewportRenderer {
         let input = RenderInput {
             objects: &object_inputs,
             maps: &map_inputs,
+            measurements: &measurement_inputs,
             settings: &resolved,
             lod,
         };
@@ -851,6 +854,7 @@ impl CaptureRenderer for ViewportRenderer {
         let markers = ResolvedSceneMarkers::default();
         let mut object_inputs = Vec::new();
         let mut map_inputs = Vec::new();
+        let mut measurement_inputs = Vec::new();
         visit_render_scene(
             registry,
             settings,
@@ -858,6 +862,7 @@ impl CaptureRenderer for ViewportRenderer {
             &markers,
             &mut |_name, obj| object_inputs.push(obj),
             &mut |_name, map| map_inputs.push(map),
+            &mut |_name, measurement| measurement_inputs.push(measurement),
         );
 
         let resolved = ResolvedSettings::resolve(settings, None);
@@ -868,6 +873,7 @@ impl CaptureRenderer for ViewportRenderer {
         let input = RenderInput {
             objects: &object_inputs,
             maps: &map_inputs,
+            measurements: &measurement_inputs,
             settings: &resolved,
             lod,
         };
@@ -899,6 +905,7 @@ impl CaptureRenderer for ViewportRenderer {
         let markers = ResolvedSceneMarkers::default();
         let mut object_inputs = Vec::new();
         let mut map_inputs = Vec::new();
+        let mut measurement_inputs = Vec::new();
         visit_render_scene(
             registry,
             settings,
@@ -906,6 +913,7 @@ impl CaptureRenderer for ViewportRenderer {
             &markers,
             &mut |_name, obj| object_inputs.push(obj),
             &mut |_name, map| map_inputs.push(map),
+            &mut |_name, measurement| measurement_inputs.push(measurement),
         );
 
         let resolved = ResolvedSettings::resolve(settings, None);
@@ -916,6 +924,7 @@ impl CaptureRenderer for ViewportRenderer {
         let input = RenderInput {
             objects: &object_inputs,
             maps: &map_inputs,
+            measurements: &measurement_inputs,
             settings: &resolved,
             lod,
         };
@@ -944,6 +953,7 @@ impl CaptureRenderer for ViewportRenderer {
         let markers = ResolvedSceneMarkers::default();
         let mut object_inputs = Vec::new();
         let mut map_inputs = Vec::new();
+        let mut measurement_inputs = Vec::new();
         visit_render_scene(
             registry,
             settings,
@@ -951,6 +961,7 @@ impl CaptureRenderer for ViewportRenderer {
             &markers,
             &mut |_name, obj| object_inputs.push(obj),
             &mut |_name, map| map_inputs.push(map),
+            &mut |_name, measurement| measurement_inputs.push(measurement),
         );
 
         let resolved = ResolvedSettings::resolve(settings, None);
@@ -961,6 +972,7 @@ impl CaptureRenderer for ViewportRenderer {
         let input = RenderInput {
             objects: &object_inputs,
             maps: &map_inputs,
+            measurements: &measurement_inputs,
             settings: &resolved,
             lod,
         };

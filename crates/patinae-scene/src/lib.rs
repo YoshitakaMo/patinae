@@ -66,8 +66,9 @@ pub use keybindings::{parse_key_string, KeyBinding, KeyBindings, KeyCode};
 pub use movie::{LoopMode, Movie, MovieFrame, ObjectKeyframe, PlayDirection, PlaybackState};
 pub use object::{
     DirtyFlags, GroupObject, Label, LabelAnchor, LabelObject, MapData, MapDisplayMode, MapObject,
-    Measurement, MeasurementObject, MeasurementType, MoleculeObject, MoleculeObjectSnapshot,
-    Object, ObjectRegistry, ObjectRegistrySnapshot, ObjectState, ObjectType, RenderObjectId,
+    Measurement, MeasurementAtomRef, MeasurementObject, MeasurementType, MoleculeObject,
+    MoleculeObjectSnapshot, Object, ObjectRegistry, ObjectRegistrySnapshot, ObjectState,
+    ObjectType, RenderObjectId,
 };
 pub use pick::{expand_pick_to_selection, pick_expression_for_hit, PickHit};
 pub use render_target::CaptureRenderer;

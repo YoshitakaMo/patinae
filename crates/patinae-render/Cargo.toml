@@ -24,6 +24,7 @@ patinae-algos = { workspace = true }
 wgpu = { workspace = true }
 lin_alg = { workspace = true }
 bytemuck = { workspace = true }
+ab_glyph = { workspace = true }
 log = { workspace = true }
 image = { workspace = true }
 pollster = "0.4"

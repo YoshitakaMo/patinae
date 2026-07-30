@@ -136,8 +136,8 @@ macro_rules! impl_setting_enum {
 )]
 #[repr(i32)]
 pub enum MouseSelectionMode {
-    Atoms = 0,
     #[default]
+    Atoms = 0,
     Residues = 1,
     Chains = 2,
     Segments = 3,
@@ -154,9 +154,9 @@ impl_setting_enum! {
         Segments = 3 => "segments",
         Objects = 4 => "objects",
         Molecules = 5 => "molecules",
-        CAlphas = 6 => "c_alphas",
+        CAlphas = 6 => "c-alphas",
     }
-    default: Residues
+    default: Atoms
 }
 
 // ---------------------------------------------------------------------------
@@ -296,10 +296,7 @@ mod tests {
 
     #[test]
     fn test_unknown_i32_returns_default() {
-        assert_eq!(
-            MouseSelectionMode::from_i32(99),
-            MouseSelectionMode::Residues
-        );
+        assert_eq!(MouseSelectionMode::from_i32(99), MouseSelectionMode::Atoms);
     }
 
     #[test]

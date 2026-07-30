@@ -1423,7 +1423,7 @@ pub static SETTINGS: &[Setting] = &[
             ("segments", SettingValue::Int(3)),
             ("objects", SettingValue::Int(4)),
             ("molecules", SettingValue::Int(5)),
-            ("c_alphas", SettingValue::Int(6))
+            ("c-alphas", SettingValue::Int(6))
         ]
     ),
     s_int!(355, "seq_view_label_spacing", Object, 5),
@@ -1526,7 +1526,7 @@ pub static SETTINGS: &[Setting] = &[
     s_color!(450, "cartoon_ladder_color", Atom, -1),
     s_color!(451, "cartoon_nucleic_acid_color", ObjectState, -1),
     s_float!(452, "cartoon_ring_transparency", ObjectState, -1.0),
-    s_float!(453, "label_size", ObjectState, 14.0),
+    s_float!(453, "label_size", ObjectState, 24.0),
     s_float!(454, "spec_direct", Global, 0.0),
     s_int!(455, "light_count", Global, 2, 1, 10),
     s_float3!(456, "light2", Global, -0.55, -0.7, 0.15),
@@ -1603,7 +1603,7 @@ pub static SETTINGS: &[Setting] = &[
     s_color!(526, "line_color", Bond, -1),
     s_float!(527, "ray_label_specular", Global, 1.0),
     s_int!(528, "mesh_skip", ObjectState, 0),
-    s_int!(529, "label_digits", ObjectState, 1),
+    s_int!(529, "label_digits", ObjectState, 3),
     s_int!(530, "label_distance_digits", ObjectState, -1),
     s_int!(531, "label_angle_digits", ObjectState, -1),
     s_int!(532, "label_dihedral_digits", ObjectState, -1),

@@ -3,13 +3,16 @@
 //! These helpers walk the registry in render order and emit stable
 //! `ObjectId`s. `ObjectId(0)` is the picking sentinel.
 
-use patinae_mol::{CoordSet, ObjectMolecule};
+use patinae_mol::{AtomIndex, CoordSet, ObjectMolecule};
 use patinae_render::{
-    ObjectId, RenderMapInput, RenderMapMode, RenderObjectInput, RepColorLutEntry, SceneLod,
+    MeasurementSegment, ObjectId, RenderMapInput, RenderMapMode, RenderMeasurementInput,
+    RenderMeasurementLabel, RenderObjectInput, RepColorLutEntry, SceneLod,
 };
-use patinae_settings::{ResolvedSettings, Settings};
+use patinae_settings::{ResolvedSettings, Settings, ThemeMode};
 
-use crate::object::{MapDisplayMode, MoleculeObject, Object, ObjectRegistry};
+use crate::object::{
+    MapDisplayMode, Measurement, MeasurementType, MoleculeObject, Object, ObjectRegistry,
+};
 
 use super::{ResolvedSceneColors, ResolvedSceneMarkers};
 
@@ -50,12 +53,111 @@ pub fn visit_render_scene<'a>(
     markers: &'a ResolvedSceneMarkers,
     visit_object: &mut dyn FnMut(&'a str, RenderObjectInput<'a>),
     visit_map: &mut dyn FnMut(&'a str, RenderMapInput<'a>),
+    visit_measurement: &mut dyn FnMut(&'a str, RenderMeasurementInput),
 ) {
     let lod = scene_lod(registry, colors);
 
     for name in registry.names() {
         if let Some(input) = render_molecule_input(registry, settings, colors, markers, name, lod) {
             visit_object(name, input);
+            continue;
+        }
+
+        if let Some(obj) = registry.get_measurement(name) {
+            if !obj.state().enabled {
+                continue;
+            }
+            let Some(id) = render_object_id(registry, name) else {
+                continue;
+            };
+            let resolved_measurements: Vec<_> = obj
+                .measurements()
+                .iter()
+                .map(|measurement| resolve_measurement_for_current_state(registry, measurement))
+                .collect();
+            let object_color = resolved_measurements
+                .first()
+                .map(|measurement| measurement.color)
+                .unwrap_or([1.0, 1.0, 0.0, 1.0]);
+            let color = if settings.ui.theme == ThemeMode::Light {
+                [0.0, 0.0, 0.0, 1.0]
+            } else {
+                object_color
+            };
+            let label_color = colors.resolve_setting_color(settings.label.color, color);
+            let label_outline_color = if settings.label.outline_color.0 < 0 {
+                [0.0, 0.0, 0.0, 0.0]
+            } else {
+                colors.resolve_setting_color(settings.label.outline_color, [0.0, 0.0, 0.0, 1.0])
+            };
+            let mut label_bg_color = if settings.label.bg_color.0 < 0 {
+                [0.0, 0.0, 0.0, 0.0]
+            } else {
+                colors.resolve_setting_color(settings.label.bg_color, [0.0, 0.0, 0.0, 1.0])
+            };
+            label_bg_color[3] *= 1.0 - settings.label.bg_transparency;
+            let label_connector_color =
+                colors.resolve_setting_color(settings.label.connector_color, label_color);
+            let segments = resolved_measurements
+                .iter()
+                .flat_map(|measurement| {
+                    measurement.segments(
+                        settings.measurement.dash_length,
+                        settings.measurement.dash_gap,
+                    )
+                })
+                .map(|segment| MeasurementSegment {
+                    p0: [segment[0].x, segment[0].y, segment[0].z],
+                    p1: [segment[1].x, segment[1].y, segment[1].z],
+                })
+                .collect();
+            let labels = resolved_measurements
+                .iter()
+                .map(|measurement| RenderMeasurementLabel {
+                    anchor: [
+                        measurement.label_position.x + settings.label.placement_offset[0],
+                        measurement.label_position.y + settings.label.placement_offset[1],
+                        measurement.label_position.z + settings.label.placement_offset[2],
+                    ],
+                    text: format_measurement_label(
+                        measurement.value,
+                        measurement.kind,
+                        settings.label.digits,
+                        settings.label.distance_digits,
+                        settings.label.angle_digits,
+                        settings.label.dihedral_digits,
+                    ),
+                    offset_px: match settings.label.relative_mode {
+                        1 | 2 => [
+                            settings.label.screen_point[0],
+                            settings.label.screen_point[1],
+                        ],
+                        _ => [settings.label.position[0], settings.label.position[1]],
+                    },
+                })
+                .collect();
+            visit_measurement(
+                name,
+                RenderMeasurementInput {
+                    object_id: id,
+                    segments,
+                    labels,
+                    color,
+                    label_color,
+                    label_outline_color,
+                    label_bg_color,
+                    label_connector_color,
+                    label_size: settings.label.size,
+                    label_padding: settings.label.padding,
+                    label_bg_outline: settings.label.bg_outline,
+                    label_connector: settings.label.connector,
+                    label_connector_width: settings.label.connector_width,
+                    label_connector_ext_length: settings.label.connector_ext_length,
+                    label_shadow_mode: settings.label.shadow_mode,
+                    label_z_target: settings.label.z_target,
+                    dash_width: settings.measurement.dash_width,
+                },
+            );
             continue;
         }
 
@@ -89,6 +191,70 @@ pub fn visit_render_scene<'a>(
             },
         );
     }
+}
+
+fn resolve_measurement_for_current_state(
+    registry: &ObjectRegistry,
+    measurement: &Measurement,
+) -> Measurement {
+    let expected = match measurement.kind {
+        MeasurementType::Distance => 2,
+        MeasurementType::Angle => 3,
+        MeasurementType::Dihedral => 4,
+    };
+    if measurement.atom_refs.len() != expected {
+        return measurement.clone();
+    }
+
+    let points: Option<Vec<_>> = measurement
+        .atom_refs
+        .iter()
+        .map(|atom_ref| {
+            registry
+                .get_molecule(&atom_ref.object_name)
+                .and_then(|object| object.display_coord(AtomIndex(atom_ref.atom_index)))
+        })
+        .collect();
+    let Some(points) = points else {
+        return measurement.clone();
+    };
+
+    let resolved = match measurement.kind {
+        MeasurementType::Distance => Measurement::distance(points[0], points[1], measurement.color),
+        MeasurementType::Angle => {
+            Measurement::angle(points[0], points[1], points[2], measurement.color)
+        }
+        MeasurementType::Dihedral => Measurement::dihedral(
+            points[0],
+            points[1],
+            points[2],
+            points[3],
+            measurement.color,
+        ),
+    };
+    resolved.with_atom_refs(measurement.atom_refs.clone())
+}
+
+fn format_measurement_label(
+    value: f64,
+    kind: MeasurementType,
+    default_digits: i32,
+    distance_digits: i32,
+    angle_digits: i32,
+    dihedral_digits: i32,
+) -> String {
+    let specific = match kind {
+        MeasurementType::Distance => distance_digits,
+        MeasurementType::Angle => angle_digits,
+        MeasurementType::Dihedral => dihedral_digits,
+    };
+    let digits = if specific < 0 {
+        default_digits
+    } else {
+        specific
+    }
+    .clamp(0, 10) as usize;
+    format!("{value:.digits$}")
 }
 
 fn render_object_id(registry: &ObjectRegistry, name: &str) -> Option<ObjectId> {
